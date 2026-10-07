@@ -1,7 +1,7 @@
 # ⚡ FlashPass — Distributed High-Concurrency Booking Engine
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live%20on%20Vercel-success?style=for-the-badge&logo=vercel)](https://vercel.com)
-[![Backend](https://img.shields.io/badge/API-Render%20Cloud-blue?style=for-the-badge&logo=render)](https://render.com)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-flashpass--three.vercel.app-success?style=for-the-badge&logo=vercel)](https://flashpass-three.vercel.app)
+[![Backend API](https://img.shields.io/badge/Backend%20API-Render%20Cloud-blue?style=for-the-badge&logo=render)](https://flashpass-engine.onrender.com/api/events)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3%20%2F%20Java%2017-brightgreen?style=for-the-badge&logo=springboot)](https://spring.io)
 [![React](https://img.shields.io/badge/React%2019-Vite%20SPA-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage%20Alpine-2496ED?style=for-the-badge&logo=docker)](https://docker.com)
