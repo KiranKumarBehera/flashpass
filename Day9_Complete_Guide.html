@@ -488,6 +488,55 @@ VITE_WS_BROKER_URL=wss://flashpass-engine.onrender.com/ws-flashpass</code></pre>
     </div>
   </section>
 
+  <!-- Section 6: The AAA-Tier Transformation -->
+  <section>
+    <h2>⚡ 6. The AAA-Tier Transformation: Concurrency Battle HUD, Multi-Event Tours &amp; Fan Personas</h2>
+    <p>
+      To elevate FlashPass from a basic demonstration project into an authentic <strong>AAA-tier Staff Engineer Showcase</strong>, we systematically engineered solutions to production challenges:
+    </p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">🎭 Multi-User Fan Personas</div>
+        <p>Enables testing real-world multi-tenancy. You can switch personas between <strong>Kiran (Fan A)</strong>, <strong>Aarav (Fan B)</strong>, <strong>Priya (Fan C)</strong>, and <strong>Vikram (Fan D)</strong>. Each browser tab preserves its own identity via <code>sessionStorage</code>. If Kiran locks Seat A2, Aarav sees it locked in Amber with a 🔒 badge and cannot release or purchase Kiran's seat.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎸 Multi-Event &amp; Venue Support</div>
+        <p>Eliminated hardcoded single concerts! FlashPass dynamically seeds and renders 3 iconic stadium tours across India:
+          <br>&bull; <strong>Coldplay</strong> (DY Patil, Mumbai) &mdash; 40 Seats (Rows A&ndash;D)
+          <br>&bull; <strong>Diljit Dosanjh</strong> (JLN Stadium, Delhi) &mdash; 50 Seats (Rows A&ndash;E)
+          <br>&bull; <strong>Taylor Swift</strong> (Wankhede, Mumbai) &mdash; 30 Seats (Rows A&ndash;C)
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🛡️ Floating Glassmorphism Toasts</div>
+        <p>Eliminated Cumulative Layout Shift (CLS = 0)! Toasts float fixed at the top center with Apple/Linear-level blur and smooth slide-down animation. The stadium, stage, and HUD metrics remain 100% rock-solid without layout jumps.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🤖 10-Bot Concurrency Race HUD</div>
+        <p>Interactive built-in stress tester! A single click fires 10 simultaneous asynchronous HTTP requests from 10 distinct bots racing for the same seat. Displays an interactive Battle HUD showing 1 Winner (200 OK) and 9 Collisions Prevented (409 Conflict) in sub-35ms!</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⏰ Backend TTL Lease Daemon</div>
+        <p>Spring Boot <code>@Scheduled(fixedRate = 10000)</code> daemon continuously purges cart-abandoned locks older than 5 minutes, auto-releasing them back to <code>AVAILABLE</code> and broadcasting the unlock to all fans via WebSockets.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔄 One-Click Stadium Reset</div>
+        <p>Admin endpoint <code>POST /api/events/{id}/reset</code> flushes Redis and restores all seats to Available in 1 click, allowing flawless repeated interview presentations.</p>
+      </div>
+    </div>
+
+    <div class="analogy-box">
+      <div class="analogy-title">💡 The Interview Closer: Proving Senior-Level Ownership</div>
+      Recruiters and hiring managers see dozens of tutorial to-do apps. When you open <a href="https://flashpass-three.vercel.app" target="_blank" style="color: var(--accent-blue);">flashpass-three.vercel.app</a>, switch between Coldplay and Diljit Dosanjh, open two side-by-side tabs with Kiran and Aarav, and click <strong>"Simulate 10-Bot Race"</strong> to demonstrate live 409 Conflict handling, you prove complete end-to-end distributed systems mastery.
+    </div>
+  </section>
+
 </div>
 
 </body>
