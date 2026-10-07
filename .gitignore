@@ -22,3 +22,8 @@ yarn-error.log*
 # OS specific
 Thumbs.db
 .DS_Store
+
+# Local Learning Guides & Course Notes (Not for public repo)
+*Complete_Guide.html
+Day*.html
+*.html.bak
