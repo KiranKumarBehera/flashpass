@@ -615,8 +615,15 @@ public Event createEventWithSeats(Event event, String rowsStr, int seatsPerRow) 
     <p><strong>The Why:</strong> Real-world ticket sales happen on smartphones. We implemented fluid CSS media queries across breakpoints (<code>&lt; 1024px</code>, <code>&lt; 860px</code>, <code>&lt; 768px</code>, and <code>&lt; 480px</code>):</p>
     <ul>
       <li><strong>Collapsible Navigation Bar:</strong> On smaller viewports, the navbar splits cleanly into brand/profile and an overflow-scrollable view switcher bar with hidden scrollbars for touch devices.</li>
-      <li><strong>Horizontal Pan Stadium Bowl:</strong> The curved amphitheater seating bowl features smooth momentum touch scrolling (<code>-webkit-overflow-scrolling: touch</code>) with scaled seat geometries (32px / 28px), ensuring fans on smartphones can navigate 100+ seats without clipping or horizontal page blowout.</li>
+      <li><strong>Horizontal Pan Stadium Bowl:</strong> The curved amphitheater seating bowl features smooth momentum touch scrolling (<code>-webkit-overflow-scrolling: touch</code>) with scaled seat geometries (27px on mobile with 4px gap), ensuring a 10-seat row spans 308px and fits effortlessly inside any 360px–390px phone screen without layout clipping or horizontal page blowout.</li>
       <li><strong>Adaptive Telemetry &amp; Passbook:</strong> The live telemetry console automatically adjusts to full-width drawer mode on mobile, while holographic passes stack gracefully.</li>
+    </ul>
+
+    <h3>8. Strict RBAC Enforcement &amp; Holographic Passbook Ticket Cancellation</h3>
+    <p><strong>The Why:</strong> An enterprise ticketing platform must strictly enforce privilege boundaries and lifecycle operations:</p>
+    <ul>
+      <li><strong>Role-Based Access Control (RBAC):</strong> Fans (<code>ROLE_FAN</code>) are strictly blocked from organizer-only actions. The "Reset Stadium" button is completely hidden from the fan UI and guarded at the controller level (<code>POST /api/events/{id}/reset</code> returns HTTP 403 Forbidden for non-organizers). Similarly, venue registration and concert scheduling endpoints reject unauthorized callers.</li>
+      <li><strong>Ticket Cancellation &amp; Immediate Inventory Release:</strong> Ticket holders can cancel their confirmed passes directly from the Holographic Passbook. <code>SeatService.releaseSeat()</code> validates identity (only the ticket owner or admin can cancel), returns the seat to <code>AVAILABLE</code>, clears booking metadata, and immediately broadcasts the released seat over STOMP to <code>/topic/seats</code> and updated gross metrics to <code>/topic/analytics</code>.</li>
     </ul>
   </section>
 
@@ -661,6 +668,14 @@ public Event createEventWithSeats(Event event, String rowsStr, int seatsPerRow) 
       <div class="qa-answer">
         <strong>Verbatim Answer:</strong><br>
         <em>"When the frontend is served over HTTPS from Vercel, browser Content Security Policies block unencrypted <code>ws://</code> traffic. Our frontend dynamically resolves the protocol: if the API protocol is HTTPS, it automatically negotiates <code>wss://</code> (WebSocket Secure over TLS). On the backend, Spring's <code>WebSocketConfig</code> explicitly configures <code>setAllowedOriginPatterns('*')</code> to permit secure cross-domain WebSocket handshakes from Vercel while preserving sub-protocol integrity."</em>
+      </div>
+    </div>
+
+    <div class="qa-box">
+      <div class="qa-question">Q6: How do you prevent privilege escalation and ensure tickets cannot be cancelled or hijacked by unauthorized actors?</div>
+      <div class="qa-answer">
+        <strong>Verbatim Answer:</strong><br>
+        <em>"We enforce security in depth: at the UI level, administrative controls like stadium wipe/reset are conditioned strictly on <code>currentUser.role === 'ROLE_ORGANIZER'</code>. At the backend REST tier, we validate caller identity against the database—rejecting unprivileged calls with HTTP 403 Forbidden. At the transaction level in <code>SeatService.releaseSeat()</code>, we verify that the cancelling caller matches the recorded <code>seat.getBookedBy()</code> or holds administrative credentials. Unauthorized release attempts throw a business exception, preventing seat hijacking while ensuring legitimate cancellations immediately recycle seats back to the public pool via WebSocket broadcast."</em>
       </div>
     </div>
   </section>
