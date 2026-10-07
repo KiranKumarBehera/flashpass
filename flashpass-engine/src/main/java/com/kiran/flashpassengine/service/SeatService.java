@@ -117,18 +117,23 @@ public class SeatService {
                 .orElseThrow(() -> new ResourceNotFoundException("Seat not found with ID: " + seatId));
 
         if (seat.getStatus() == SeatStatus.BOOKED) {
-            throw new SeatUnavailableException("Cannot release Seat " + seat.getSeatNumber() + " because it is already BOOKED.");
-        }
-
-        // Validate user identity: only lock holder or ADMIN can release
-        if (seat.getLockedBy() != null && user != null && !"ADMIN".equalsIgnoreCase(user) 
-                && !seat.getLockedBy().equalsIgnoreCase(user)) {
-            throw new SeatUnavailableException("Cannot release Seat " + seat.getSeatNumber() + ": currently held by " + seat.getLockedBy());
+            // Only the ticket holder, organizer, or admin can cancel/refund the seat
+            if (user != null && !"ADMIN".equalsIgnoreCase(user) && !"ORGANIZER".equalsIgnoreCase(user) 
+                    && seat.getBookedBy() != null && !seat.getBookedBy().equalsIgnoreCase(user)) {
+                throw new SeatUnavailableException("Cannot cancel Seat " + seat.getSeatNumber() + ": booked by " + seat.getBookedBy());
+            }
+        } else if (seat.getStatus() == SeatStatus.LOCKED) {
+            // Validate user identity: only lock holder or ADMIN can release
+            if (seat.getLockedBy() != null && user != null && !"ADMIN".equalsIgnoreCase(user) && !"ORGANIZER".equalsIgnoreCase(user)
+                    && !seat.getLockedBy().equalsIgnoreCase(user)) {
+                throw new SeatUnavailableException("Cannot release Seat " + seat.getSeatNumber() + ": currently held by " + seat.getLockedBy());
+            }
         }
 
         seat.setStatus(SeatStatus.AVAILABLE);
         seat.setLockedBy(null);
         seat.setLockedAt(null);
+        seat.setBookedBy(null);
         Seat savedSeat = seatRepository.save(seat);
 
         // 📢 Broadcast released seat to all connected browsers!

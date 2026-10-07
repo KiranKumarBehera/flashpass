@@ -472,18 +472,40 @@ function App() {
   };
 
   const handleResetStadium = async () => {
-    if (!activeEvent) return;
+    if (!activeEvent || !currentUser) return;
+    if (currentUser.role !== 'ROLE_ORGANIZER' && currentUser.role !== 'ROLE_ADMIN') {
+      showMessage('Forbidden: Only Organizers & Admins can reset the stadium.', 'error');
+      return;
+    }
     if (!window.confirm(`Reset all seats for "${activeEvent.name}" back to AVAILABLE?`)) return;
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/events/${activeEvent.id}/reset`);
+      const res = await axios.post(`${API_BASE_URL}/events/${activeEvent.id}/reset?user=${encodeURIComponent(currentUser.username)}`);
       setSeats(res.data);
       setSelectedSeat(null);
       playSound('book');
       showMessage(`🔄 All seats for "${activeEvent.name}" reset to AVAILABLE!`, 'success');
-      addTelemetryLog('REDIS', `Stadium reset & Redis cache cleared for Event #${activeEvent.id}`);
+      addTelemetryLog('REDIS', `Admin ${currentUser.username} reset stadium for Event #${activeEvent.id}`);
     } catch (err) {
-      showMessage('Failed to reset stadium.', 'error');
+      showMessage(err.response?.data?.message || 'Failed to reset stadium.', 'error');
+    }
+  };
+
+  const handleCancelMyTicket = async (ticket) => {
+    if (!ticket || !currentUser) return;
+    if (!window.confirm(`Are you sure you want to cancel your pass for Seat ${ticket.seatNumber}? This seat will be returned to the public pool.`)) return;
+
+    try {
+      await axios.post(`${API_BASE_URL}/seats/${ticket.id}/release?user=${encodeURIComponent(currentUser.username)}`);
+      playSound('click');
+      showMessage(`Ticket for Seat ${ticket.seatNumber} cancelled and refunded.`, 'info');
+      addTelemetryLog('JPA', `Fan ${currentUser.username} cancelled pass for Seat ${ticket.seatNumber}`);
+      loadMyTickets(currentUser.username);
+      if (activeEvent?.id === ticket.eventId) {
+        loadSeats(ticket.eventId);
+      }
+    } catch (err) {
+      showMessage(err.response?.data?.message || 'Failed to cancel pass.', 'error');
     }
   };
 
@@ -491,14 +513,15 @@ function App() {
   const handleCreateVenue = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post(`${API_BASE_URL}/venues`, newVenueForm);
+      const u = currentUser?.username || 'organizer';
+      const res = await axios.post(`${API_BASE_URL}/venues?user=${encodeURIComponent(u)}`, newVenueForm);
       setVenues(prev => [...prev, res.data]);
       setNewVenueForm({ name: '', city: '', capacity: 50000, seatingRows: 'A,B,C,D', seatsPerRow: 10 });
       playSound('book');
       showMessage(`🏟️ Venue "${res.data.name}" registered successfully!`, 'success');
       addTelemetryLog('ORGANIZER', `New venue registered: ${res.data.name} (${res.data.city})`);
     } catch (err) {
-      showMessage('Failed to register venue.', 'error');
+      showMessage(err.response?.data?.message || 'Failed to register venue.', 'error');
     }
   };
 
@@ -516,8 +539,9 @@ function App() {
         basePriceStd: parseFloat(newEventForm.basePriceStd)
       };
 
+      const u = currentUser?.username || 'organizer';
       const res = await axios.post(
-        `${API_BASE_URL}/events?rows=${encodeURIComponent(newEventForm.rows)}&seatsPerRow=${newEventForm.seatsPerRow}`,
+        `${API_BASE_URL}/events?rows=${encodeURIComponent(newEventForm.rows)}&seatsPerRow=${newEventForm.seatsPerRow}&user=${encodeURIComponent(u)}`,
         payload
       );
 
@@ -529,7 +553,7 @@ function App() {
       showMessage(`🎸 Tour show "${res.data.name}" listed with real-time seat inventory!`, 'success');
       addTelemetryLog('ORGANIZER', `Show created with ${newEventForm.rows.split(',').length * newEventForm.seatsPerRow} seats`);
     } catch (err) {
-      showMessage('Failed to schedule event.', 'error');
+      showMessage(err.response?.data?.message || 'Failed to schedule event.', 'error');
     }
   };
 
@@ -751,12 +775,14 @@ function App() {
                 </div>
 
                 <div className="hud-buttons">
-                  <button className="btn-hud-race" onClick={handleRunRaceSimulation}>
+                  <button className="btn-hud-race" onClick={handleRunRaceSimulation} title="Run Concurrency Battle Stress Test">
                     ⚡ 10-Bot Race
                   </button>
-                  <button className="btn-hud-reset" onClick={handleResetStadium} title="Reset seats for this event">
-                    🔄 Reset
-                  </button>
+                  {(currentUser?.role === 'ROLE_ORGANIZER' || currentUser?.role === 'ROLE_ADMIN') && (
+                    <button className="btn-hud-reset" onClick={handleResetStadium} title="Organizer Action: Reset all seats to AVAILABLE">
+                      🔄 Reset Stadium
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1054,6 +1080,15 @@ function App() {
                       <div className="ticket-barcode-footer">
                         <div className="barcode-stripes"></div>
                         <span className="barcode-number">FLASHPASS-{ticket.id}-{ticket.version}-{Date.now().toString().slice(-6)}</span>
+                      </div>
+
+                      <div className="ticket-actions-bar">
+                        <button
+                          className="btn-cancel-pass"
+                          onClick={() => handleCancelMyTicket(ticket)}
+                        >
+                          ✕ Cancel Pass &amp; Release Seat
+                        </button>
                       </div>
                     </div>
                   </div>

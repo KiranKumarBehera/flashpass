@@ -51,6 +51,9 @@ package com.kiran.flashpassengine.controller;
 
 import com.kiran.flashpassengine.model.Event;
 import com.kiran.flashpassengine.model.Seat;
+import com.kiran.flashpassengine.model.User;
+import com.kiran.flashpassengine.model.UserRole;
+import com.kiran.flashpassengine.repository.UserRepository;
 import com.kiran.flashpassengine.service.SeatService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -63,9 +66,11 @@ import java.util.List;
 public class EventController {
 
     private final SeatService seatService;
+    private final UserRepository userRepository;
 
-    public EventController(SeatService seatService) {
+    public EventController(SeatService seatService, UserRepository userRepository) {
         this.seatService = seatService;
+        this.userRepository = userRepository;
     }
 
     @GetMapping("/events")
@@ -73,12 +78,24 @@ public class EventController {
         return ResponseEntity.ok(seatService.getAllEvents());
     }
 
-    // Organizer: Create new event tour date & auto-generate seat inventory
+    // Organizer/Admin: Create new event tour date & auto-generate seat inventory
     @PostMapping("/events")
-    public ResponseEntity<Event> createEvent(
+    public ResponseEntity<?> createEvent(
             @RequestBody Event event,
             @RequestParam(required = false, defaultValue = "A,B,C,D") String rows,
-            @RequestParam(required = false, defaultValue = "10") Integer seatsPerRow) {
+            @RequestParam(required = false, defaultValue = "10") Integer seatsPerRow,
+            @RequestParam(required = false, defaultValue = "organizer") String user) {
+        // Enforce RBAC: Fans cannot schedule events
+        if (!"organizer".equalsIgnoreCase(user) && !"admin".equalsIgnoreCase(user)) {
+            User u = userRepository.findByUsername(user).orElse(null);
+            if (u == null || (u.getRole() != UserRole.ROLE_ORGANIZER && u.getRole() != UserRole.ROLE_ADMIN)) {
+                return ResponseEntity.status(403).body(java.util.Map.of(
+                    "status", 403,
+                    "error", "FORBIDDEN",
+                    "message", "Access Denied: Only Organizers and Admins can schedule new events."
+                ));
+            }
+        }
         if (event.getName() == null || event.getName().isBlank()) {
             throw new IllegalArgumentException("Event name is required");
         }
@@ -112,7 +129,7 @@ public class EventController {
         return ResponseEntity.ok(seatService.bookSeat(seatId, user));
     }
 
-    // Release Seat
+    // Release Seat (Lock or confirmed booking refund)
     @PostMapping("/seats/{seatId}/release")
     public ResponseEntity<Seat> releaseSeat(
             @PathVariable Long seatId, 
@@ -120,9 +137,22 @@ public class EventController {
         return ResponseEntity.ok(seatService.releaseSeat(seatId, user));
     }
 
-    // Reset Stadium
+    // Reset Stadium (STRICT RBAC: Only Admin or Organizer)
     @PostMapping("/events/{eventId}/reset")
-    public ResponseEntity<List<Seat>> resetEventSeats(@PathVariable Long eventId) {
+    public ResponseEntity<?> resetEventSeats(
+            @PathVariable Long eventId,
+            @RequestParam(required = false, defaultValue = "organizer") String user) {
+        // Enforce RBAC: Fans cannot reset stadium
+        if (!"organizer".equalsIgnoreCase(user) && !"admin".equalsIgnoreCase(user)) {
+            User u = userRepository.findByUsername(user).orElse(null);
+            if (u == null || (u.getRole() != UserRole.ROLE_ORGANIZER && u.getRole() != UserRole.ROLE_ADMIN)) {
+                return ResponseEntity.status(403).body(java.util.Map.of(
+                    "status", 403,
+                    "error", "FORBIDDEN",
+                    "message", "Access Denied: Only Organizers and Admins can reset the stadium."
+                ));
+            }
+        }
         return ResponseEntity.ok(seatService.resetEventSeats(eventId));
     }
 
