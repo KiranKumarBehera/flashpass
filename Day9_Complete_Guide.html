@@ -601,14 +601,22 @@ public Event createEventWithSeats(Event event, String rowsStr, int seatsPerRow) 
     <p><strong>Location:</strong> <code>flashpass-engine/src/main/java/com/kiran/flashpassengine/service/AuthService.java</code></p>
     <p><strong>The Why:</strong> Implements secure one-way cryptographic password hashing without bringing in heavy, bloated Spring Security filters that can interfere with lightweight WebSocket handshakes.</p>
 
-    <h3>5. Master Cockpit Overhaul in <code>App.jsx</code> &amp; <code>App.css</code></h3>
-    <p><strong>Location:</strong> <code>flashpass-ui/src/App.jsx</code> and <code>App.css</code></p>
-    <p>Organized into 4 clean, dedicated views:</p>
+    <h3>6. Multi-Topic STOMP WebSockets &amp; Universal Real-Time Sync</h3>
+    <p><strong>The Why:</strong> Initially, real-time messaging was only attached to <code>/topic/seats</code>. If an organizer listed a new stadium venue or scheduled a new Coldplay tour date in Browser A, Kiran's profile in Browser B did not update without a manual page reload. We elevated the architecture to <strong>Universal Multi-Topic STOMP Synchronization</strong>:</p>
     <ul>
-      <li><strong>Arena View:</strong> Volumetric stage lighting, curved amphitheater seating bowl, interactive seat selection.</li>
-      <li><strong>Tours View:</strong> Multi-city concert cards, artist badges, stadium venue filters.</li>
-      <li><strong>Tickets View:</strong> Holographic Passbook with perforated notches and ticket release capability.</li>
-      <li><strong>Organizer Portal:</strong> Revenue analytics, capacity utilization charts, venue creator, and tour date scheduler.</li>
+      <li><code>/topic/seats</code>: Broadcasts instantaneous seat lock acquisitions, bookings, and release events.</li>
+      <li><code>/topic/venues</code>: Broadcasts new stadium registrations dynamically to all connected fans.</li>
+      <li><code>/topic/events</code>: Broadcasts new concert tour dates with dynamically generated seat inventories.</li>
+      <li><code>/topic/analytics</code>: Broadcasts updated financial &amp; capacity telemetry (Gross Revenue, Occupancy %) to organizers in real-time.</li>
+      <li><code>/topic/events/reset</code>: Broadcasts stadium seat reset events, immediately clearing all held or booked seats across all fan viewports simultaneously.</li>
+    </ul>
+
+    <h3>7. Mobile &amp; Tablet Responsive Architecture</h3>
+    <p><strong>The Why:</strong> Real-world ticket sales happen on smartphones. We implemented fluid CSS media queries across breakpoints (<code>&lt; 1024px</code>, <code>&lt; 860px</code>, <code>&lt; 768px</code>, and <code>&lt; 480px</code>):</p>
+    <ul>
+      <li><strong>Collapsible Navigation Bar:</strong> On smaller viewports, the navbar splits cleanly into brand/profile and an overflow-scrollable view switcher bar with hidden scrollbars for touch devices.</li>
+      <li><strong>Horizontal Pan Stadium Bowl:</strong> The curved amphitheater seating bowl features smooth momentum touch scrolling (<code>-webkit-overflow-scrolling: touch</code>) with scaled seat geometries (32px / 28px), ensuring fans on smartphones can navigate 100+ seats without clipping or horizontal page blowout.</li>
+      <li><strong>Adaptive Telemetry &amp; Passbook:</strong> The live telemetry console automatically adjusts to full-width drawer mode on mobile, while holographic passes stack gracefully.</li>
     </ul>
   </section>
 
