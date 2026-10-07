@@ -25,32 +25,47 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // Only seed data if database is currently empty
+        // Seed Event 1: Coldplay if no events exist
         if (eventRepository.count() == 0) {
-            System.out.println(">>> Seeding initial Event and Seats into Neon Database...");
-
-            Event event = new Event(
-                    "Coldplay: Music of the Spheres World Tour",
-                    "DY Patil Stadium, Mumbai",
-                    LocalDateTime.now().plusDays(30)
-            );
-            event = eventRepository.save(event);
-
-            List<Seat> seats = new ArrayList<>();
-            String[] rows = {"A", "B", "C", "D"};
-
-            for (String row : rows) {
-                for (int num = 1; num <= 10; num++) {
-                    String seatNumber = row + num; // e.g. A1, A2... D10
-                    Double price = row.equals("A") || row.equals("B") ? 5000.0 : 2500.0;
-                    seats.add(new Seat(seatNumber, SeatStatus.AVAILABLE, price, event));
-                }
-            }
-
-            seatRepository.saveAll(seats);
-            System.out.println(">>> Successfully seeded " + seats.size() + " seats for Event ID: " + event.getId());
-        } else {
-            System.out.println(">>> Database already contains event data. Skipping seeding.");
+            seedEvent("Coldplay: Music of the Spheres World Tour", 
+                      "DY Patil Stadium, Mumbai", 
+                      LocalDateTime.now().plusDays(25), 
+                      new String[]{"A", "B", "C", "D"}, 
+                      5000.0, 2500.0);
         }
+
+        // Seed Event 2: Diljit Dosanjh (50 seats)
+        if (eventRepository.count() < 2) {
+            seedEvent("Diljit Dosanjh: Dil-Luminati Tour", 
+                      "Jawaharlal Nehru Stadium, New Delhi", 
+                      LocalDateTime.now().plusDays(40), 
+                      new String[]{"A", "B", "C", "D", "E"}, 
+                      6500.0, 3200.0);
+        }
+
+        // Seed Event 3: Taylor Swift (30 seats)
+        if (eventRepository.count() < 3) {
+            seedEvent("Taylor Swift: The Eras Tour (Acoustic Arena)", 
+                      "Wankhede Stadium, Mumbai", 
+                      LocalDateTime.now().plusDays(60), 
+                      new String[]{"A", "B", "C"}, 
+                      9500.0, 4500.0);
+        }
+    }
+
+    private void seedEvent(String name, String venue, LocalDateTime date, String[] rows, Double vipPrice, Double stdPrice) {
+        System.out.println(">>> Seeding Event: " + name + " at " + venue);
+        Event event = eventRepository.save(new Event(name, venue, date));
+        List<Seat> seats = new ArrayList<>();
+        for (int r = 0; r < rows.length; r++) {
+            String row = rows[r];
+            boolean isVip = r < 2; // first 2 rows VIP
+            Double price = isVip ? vipPrice : stdPrice;
+            for (int num = 1; num <= 10; num++) {
+                seats.add(new Seat(row + num, SeatStatus.AVAILABLE, price, event));
+            }
+        }
+        seatRepository.saveAll(seats);
+        System.out.println(">>> Successfully seeded " + seats.size() + " seats for Event ID: " + event.getId());
     }
 }

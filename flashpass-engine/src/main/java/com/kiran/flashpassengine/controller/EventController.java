@@ -80,19 +80,31 @@ public class EventController {
 
     // Lock Seat
     @PostMapping("/seats/{seatId}/lock")
-    public ResponseEntity<Seat> lockSeat(@PathVariable Long seatId) {
-        return ResponseEntity.ok(seatService.lockSeat(seatId));
+    public ResponseEntity<Seat> lockSeat(
+            @PathVariable Long seatId, 
+            @RequestParam(required = false, defaultValue = "Kiran") String user) {
+        return ResponseEntity.ok(seatService.lockSeat(seatId, user));
     }
 
     // Confirm Booking
     @PostMapping("/seats/{seatId}/book")
-    public ResponseEntity<Seat> bookSeat(@PathVariable Long seatId) {
-        return ResponseEntity.ok(seatService.bookSeat(seatId));
+    public ResponseEntity<Seat> bookSeat(
+            @PathVariable Long seatId, 
+            @RequestParam(required = false, defaultValue = "Kiran") String user) {
+        return ResponseEntity.ok(seatService.bookSeat(seatId, user));
     }
 
     // Release Seat
     @PostMapping("/seats/{seatId}/release")
-    public ResponseEntity<Seat> releaseSeat(@PathVariable Long seatId) {
-        return ResponseEntity.ok(seatService.releaseSeat(seatId));
+    public ResponseEntity<Seat> releaseSeat(
+            @PathVariable Long seatId, 
+            @RequestParam(required = false, defaultValue = "Kiran") String user) {
+        return ResponseEntity.ok(seatService.releaseSeat(seatId, user));
+    }
+
+    // Reset Stadium
+    @PostMapping("/events/{eventId}/reset")
+    public ResponseEntity<List<Seat>> resetEventSeats(@PathVariable Long eventId) {
+        return ResponseEntity.ok(seatService.resetEventSeats(eventId));
     }
 }

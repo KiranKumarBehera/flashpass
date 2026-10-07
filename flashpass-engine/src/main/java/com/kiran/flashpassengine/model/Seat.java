@@ -29,6 +29,15 @@ public class Seat implements java.io.Serializable{
     @Version
     private Long version;
 
+    @Column
+    private String lockedBy;
+
+    @Column
+    private java.time.LocalDateTime lockedAt;
+
+    @Column
+    private String bookedBy;
+
     public Seat() {}
 
     public Seat(String seatNumber, SeatStatus status, Double price, Event event) {
@@ -56,4 +65,13 @@ public class Seat implements java.io.Serializable{
 
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
+
+    public String getLockedBy() { return lockedBy; }
+    public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
+
+    public java.time.LocalDateTime getLockedAt() { return lockedAt; }
+    public void setLockedAt(java.time.LocalDateTime lockedAt) { this.lockedAt = lockedAt; }
+
+    public String getBookedBy() { return bookedBy; }
+    public void setBookedBy(String bookedBy) { this.bookedBy = bookedBy; }
 }
