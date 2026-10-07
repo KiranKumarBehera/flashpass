@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FlashPass - Day 8 Complete Docker & Containerization Guide</title>
+<style>
+    @page {
+        size: A4;
+        margin: 15mm 15mm 15mm 15mm;
+    }
+    body {
+        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+        color: #1e293b;
+        line-height: 1.6;
+        font-size: 13.5px;
+        margin: 0;
+        padding: 20px;
+        background: #f8fafc;
+    }
+    .container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: #ffffff;
+        padding: 35px 40px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    h1, h2, h3, h4 {
+        color: #0f172a;
+        font-weight: 700;
+    }
+    h1 {
+        font-size: 26px;
+        border-bottom: 3px solid #0284c7;
+        padding-bottom: 10px;
+        margin-top: 0;
+        color: #0369a1;
+    }
+    h2 {
+        font-size: 19px;
+        color: #0284c7;
+        border-left: 5px solid #0284c7;
+        padding-left: 12px;
+        margin-top: 32px;
+        background: #f0f9ff;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        border-radius: 0 6px 6px 0;
+    }
+    h3 {
+        font-size: 15.5px;
+        color: #0f172a;
+        margin-top: 20px;
+    }
+    .header-box {
+        background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+        color: white;
+        padding: 22px 26px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+    }
+    .header-box h1 {
+        color: white;
+        border: none;
+        margin: 0 0 8px 0;
+        font-size: 24px;
+    }
+    .header-meta {
+        font-size: 13px;
+        color: #bae6fd;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 12px 0;
+        overflow-x: auto;
+    }
+    .analogy-box {
+        background: #f0fdfa;
+        border: 1px solid #ccfbf1;
+        border-left: 5px solid #0d9488;
+        padding: 14px 18px;
+        border-radius: 6px;
+        margin: 16px 0;
+        font-size: 13.5px;
+    }
+    .analogy-title {
+        font-weight: 700;
+        color: #115e59;
+        margin-bottom: 6px;
+        font-size: 14px;
+    }
+    .flow-diagram {
+        background: #0f172a;
+        color: #38bdf8;
+        padding: 18px;
+        border-radius: 8px;
+        font-family: 'Consolas', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        margin: 18px 0;
+        white-space: pre;
+        overflow-x: auto;
+    }
+    .qa-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #0284c7;
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin: 16px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+    }
+    .qa-card.critical {
+        border-left-color: #dc2626;
+        background: #fffafa;
+    }
+    .question {
+        font-weight: 700;
+        color: #0f172a;
+        font-size: 14.5px;
+        margin-bottom: 8px;
+    }
+    .answer {
+        color: #334155;
+        font-size: 13.5px;
+        line-height: 1.6;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 16px 0;
+        font-size: 13px;
+    }
+    th, td {
+        border: 1px solid #cbd5e1;
+        padding: 9px 12px;
+        text-align: left;
+    }
+    th {
+        background: #f1f5f9;
+        font-weight: 700;
+        color: #0f172a;
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="header-box">
+    <h1>FlashPass — Day 8 Complete Docker & Containerization Guide</h1>
+    <div class="header-meta">
+        <strong>Multi-Stage Builds, Image Optimization, Nginx Reverse Proxy & Orchestration</strong><br>
+        Candidate: Kiran Kumar Behera | Stack: Docker, Multi-Stage Dockerfile, Alpine Linux, Nginx, Docker Compose
+    </div>
+</div>
+
+<h2>1. The Big Picture: What is Docker & Why Does It Matter?</h2>
+<p>
+Before containerization, the most common frustration in software engineering was the classic: <strong>"It works on my machine, but crashes in production!"</strong>
+</p>
+<ul>
+    <li>Your laptop had Java 17.0.8, but production had Java 11.</li>
+    <li>Production was missing an environment variable or system library.</li>
+    <li>Node.js version mismatches caused client bundle errors.</li>
+</ul>
+
+<div class="analogy-box">
+    <div class="analogy-title">🚢 The Standard Shipping Container Analogy:</div>
+    Before 1956, shipping cargo was chaotic: bananas, cars, barrels, and sacks all had different shapes. Cranes broke, ships couldn't dock at every port, and loading took weeks.<br><br>
+    The invention of the <strong>Standard Intermodal Shipping Container</strong> changed global trade forever: regardless of what is packed inside, every container has standard dimensions and fits onto any cargo ship, freight train, or flatbed truck in the world.<br><br>
+    <strong>Docker is the shipping container of software:</strong> It packages your code, runtime (JRE/Node), libraries, and OS settings into a standardized, isolated container that executes identically on Windows, Linux, macOS, AWS, or Render!
+</div>
+
+---
+
+<h2>2. Multi-Stage Builds: The Senior Engineer Secret</h2>
+<p>
+A common beginner mistake is writing a single-stage <code>Dockerfile</code> that compiles code and runs it in the same container. This results in bloated, insecure <strong>800MB+ images</strong> containing compilers and build tools that shouldn't exist in production.
+</p>
+
+<h3>How Our Backend Multi-Stage Build Works:</h3>
+<div class="flow-diagram">
+STAGE 1: BUILDER (maven:3.9.6-eclipse-temurin-17-alpine) ~800MB
+├── Copies pom.xml & downloads dependencies
+├── Copies Java source code
+└── Compiles & packages: flashpass-engine.jar
+        │
+        ▼  [DISCARDS THE ENTIRE COMPILER, MAVEN & SOURCE CODE!]
+        │
+STAGE 2: RUNTIME (eclipse-temurin:17-jre-alpine) ~150MB
+├── Ultra-lightweight Alpine Linux kernel + JRE (No Maven, No javac)
+├── Creates non-root system user 'flashpass' (Security Best Practice)
+├── Copies ONLY the compiled .jar file from Stage 1:
+│   COPY --from=builder /app/target/*.jar app.jar
+└── Result: 80% SMALLER IMAGE SIZE & ZERO BUILD TOOL VULNERABILITIES!
+</div>
+
+---
+
+<h2>3. Docker Layer Caching (Why Order of Commands Matters!)</h2>
+<p>
+Look closely at how we structured our Backend and Frontend Dockerfiles:
+</p>
+<div class="code-block">
+# 1. Copy dependencies FIRST
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# 2. Copy source code SECOND
+COPY src ./src
+RUN mvn clean package -DskipTests
+</div>
+
+<p><strong>Why is this an interview favorite?</strong></p>
+<ul>
+    <li>Docker caches each line as an immutable image layer.</li>
+    <li>If you copied source code first (<code>COPY . .</code>), every time you changed a single line of Java or React code, Docker's cache would be invalidated, forcing a slow 5-minute download of all Maven/npm dependencies!</li>
+    <li>By copying <code>pom.xml</code> / <code>package.json</code> first, Docker reuses the cached dependencies in <strong>under 2 seconds</strong> unless your dependencies actually change!</li>
+</ul>
+
+---
+
+<h2>4. Frontend Production Architecture: Why Nginx Over Node.js?</h2>
+<p>
+In development, we ran <code>npm run dev</code> using Vite's local Node.js development server. In production, <strong>we never run Node.js to serve a React SPA!</strong>
+</p>
+
+<div class="flow-diagram">
+STAGE 1: Node.js 20 Builder
+├── Compiles React JSX into raw, static HTML, CSS, and JS bundles inside /dist
+        │
+        ▼  [Node.js (~450MB) is completely discarded!]
+        │
+STAGE 2: Nginx Web Server (~25MB)
+├── Serves static files directly from RAM using C-based event-driven architecture
+├── Configures Gzip compression (slashes bundle transfer size by 70%)
+└── Implements SPA Routing: try_files $uri $uri/ /index.html;
+</div>
+
+<div class="analogy-box">
+    <div class="analogy-title">⚡ Why Nginx?</div>
+    React after compilation is just flat static files (HTML, CSS, JS). Keeping a heavy Node.js server running in production just to serve static text files is like hiring a semi-truck to deliver an envelope. <strong>Nginx</strong> is an ultra-fast, lightweight C-based web server specifically engineered for maximum throughput.
+</div>
+
+---
+
+<h2>5. Full-Stack Orchestration: `docker-compose.yml`</h2>
+<p>
+Rather than manually running separate <code>docker build</code> and <code>docker run</code> commands with lengthy port and environment variable flags, <strong>Docker Compose</strong> orchestrates both microservices:
+</p>
+<div class="code-block">
+version: '3.8'
+services:
+  flashpass-backend:
+    build: ./flashpass-engine
+    ports: ["8080:8080"]
+    environment:
+      - SPRING_DATASOURCE_URL=...
+      - SPRING_DATA_REDIS_HOST=...
+
+  flashpass-frontend:
+    build: ./flashpass-ui
+    ports: ["80:80"]
+    depends_on: [flashpass-backend]
+</div>
+
+<p>
+A single command: <strong><code>docker compose up --build</code></strong> builds both containers, links their internal network, and exposes the frontend on port 80 and backend on port 8080!
+</p>
+
+---
+
+<h2>6. Master Interview Cross-Questions & Model Answers</h2>
+
+<div class="qa-card critical">
+    <div class="question">Q1. What is a Multi-Stage Docker build, and why did you use it?</div>
+    <div class="answer">
+        <strong>How to answer:</strong><br>
+        <em>"A multi-stage build separates the build environment from the runtime environment using multiple <code>FROM</code> directives in a single Dockerfile. In Stage 1, we use full build images (Maven JDK or Node.js) to compile and package artifacts. In Stage 2, we copy only the compiled binary (JAR or Nginx dist folder) into a minimal Alpine Linux runtime image.<br><br>
+        This reduced our backend image size from ~850MB to ~160MB (and frontend from ~500MB to ~25MB), drastically cut container deployment pull times, and minimized the security attack surface by excluding compilers and build tools from production."</em>
+    </div>
+</div>
+
+<div class="qa-card critical">
+    <div class="question">Q2. Why did you create a non-root user in your backend Dockerfile? (Container Security)</div>
+    <div class="answer">
+        <strong>How to answer:</strong><br>
+        <em>"By default, processes inside a Docker container execute as the <code>root</code> user. If an attacker discovers a Remote Code Execution (RCE) vulnerability in an application library, they obtain root privileges inside the container, potentially allowing a container breakout to compromise the host kernel. Adding <code>USER flashpass</code> enforces the Principle of Least Privilege, preventing unauthorized host manipulation."</em>
+    </div>
+</div>
+
+<div class="qa-card">
+    <div class="question">Q3. What is the purpose of .dockerignore?</div>
+    <div class="answer">
+        <strong>How to answer:</strong><br>
+        <em>"When Docker builds an image, the Docker CLI first copies the current directory into the Docker Daemon (the build context). <code>.dockerignore</code> prevents large or sensitive directories (such as local <code>target/</code>, <code>node_modules/</code>, <code>.git/</code>, and IDE configuration files) from being sent to the daemon. This dramatically accelerates build speeds and prevents local build artifacts or secrets from leaking into the container."</em>
+    </div>
+</div>
+
+<div class="qa-card">
+    <div class="question">Q4. In Java containers, why do you include -XX:+UseContainerSupport and -XX:MaxRAMPercentage?</div>
+    <div class="answer">
+        <strong>How to answer:</strong><br>
+        <em>"Historically, the JVM read the host machine's total physical memory rather than the container's cgroup memory limits. In a container restricted to 512MB RAM on a 16GB host, an unconstrained JVM would allocate default heap based on 16GB, causing the Linux Out-Of-Memory (OOM) killer to instantly terminate the container.<br><br>
+        <code>-XX:+UseContainerSupport</code> (default in Java 17+) and <code>-XX:MaxRAMPercentage=75.0</code> instruct the JVM to size its heap strictly against the container's allocated memory boundary."</em>
+    </div>
+</div>
+
+<div class="qa-card">
+    <div class="question">Q5. Why do we need try_files $uri $uri/ /index.html in Nginx for React?</div>
+    <div class="answer">
+        <strong>How to answer:</strong><br>
+        <em>"React is a Single Page Application (SPA) utilizing client-side routing. When a user directly visits or refreshes a nested URL like <code>/seats/confirm</code>, the browser requests that physical file from Nginx. Because only <code>index.html</code> physically exists on disk, Nginx would return a 404 Not Found error. <code>try_files $uri $uri/ /index.html;</code> tells Nginx: if the requested file doesn't exist, fallback to <code>index.html</code> so React's client router can parse the URL and render the correct view."</em>
+    </div>
+</div>
+
+</div>
+
+</body>
+</html>

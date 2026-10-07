@@ -1,0 +1,24 @@
+# Eclipse Workspace & Local IDE Files
+.metadata/
+newJavaProject/
+Servers/
+.settings/
+.project
+.classpath
+.idea/
+*.iml
+.vscode/
+
+# Build artifacts & dependencies
+**/target/
+**/node_modules/
+**/dist/
+**/build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific
+Thumbs.db
+.DS_Store
