@@ -125,13 +125,19 @@ function App() {
     ]);
   };
 
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+
+  const activeEventRef = useRef(activeEvent);
+  activeEventRef.current = activeEvent;
+
   // 1. Initial Load: Events, Venues, MyTickets
   useEffect(() => {
     bootstrapData();
     addTelemetryLog('BOOT', 'Connecting to FlashPass Distributed Cloud Engine');
   }, []);
 
-  // 2. Real-Time STOMP WebSockets
+  // 2. Real-Time STOMP WebSockets (RFC 6455) Across All Entities
   useEffect(() => {
     const stompClient = new Client({
       brokerURL: WS_BROKER_URL,
@@ -142,6 +148,7 @@ function App() {
         setWsConnected(true);
         addTelemetryLog('STOMP', 'WebSocket handshaked on /ws-flashpass (RFC 6455)');
 
+        // 💺 Topic 1: Real-time Seat Locks, Bookings & Releases
         stompClient.subscribe('/topic/seats', (message) => {
           if (message.body) {
             try {
@@ -157,8 +164,76 @@ function App() {
                 }
                 return prev;
               });
+
+              // If current user booked/released a ticket, refresh passbook
+              if (currentUserRef.current?.username) {
+                loadMyTickets(currentUserRef.current.username);
+              }
             } catch (err) {
-              console.error('Failed to parse STOMP message', err);
+              console.error('Failed to parse seat STOMP message', err);
+            }
+          }
+        });
+
+        // 🏟️ Topic 2: Real-time Venue Registrations
+        stompClient.subscribe('/topic/venues', (message) => {
+          if (message.body) {
+            try {
+              const newVenue = JSON.parse(message.body);
+              addTelemetryLog('STOMP', `Frame on /topic/venues: Venue ${newVenue.name} (${newVenue.city}) added`);
+              setVenues(prev => {
+                if (prev.some(v => v.id === newVenue.id)) return prev;
+                return [...prev, newVenue];
+              });
+              showMessage(`🏟️ New Venue added: ${newVenue.name} (${newVenue.city})!`, 'info');
+            } catch (err) {
+              console.error('Failed to parse venue STOMP message', err);
+            }
+          }
+        });
+
+        // 🎸 Topic 3: Real-time Tour Show Schedules
+        stompClient.subscribe('/topic/events', (message) => {
+          if (message.body) {
+            try {
+              const newEvt = JSON.parse(message.body);
+              addTelemetryLog('STOMP', `Frame on /topic/events: New Tour Show announced: ${newEvt.name}`);
+              setEvents(prev => {
+                if (prev.some(e => e.id === newEvt.id)) return prev;
+                return [...prev, newEvt];
+              });
+              showMessage(`🎸 New Tour Show announced: ${newEvt.name}!`, 'info');
+            } catch (err) {
+              console.error('Failed to parse event STOMP message', err);
+            }
+          }
+        });
+
+        // 📊 Topic 4: Real-time Financial & Capacity Telemetry for Organizers
+        stompClient.subscribe('/topic/analytics', (message) => {
+          if (message.body) {
+            try {
+              const telemetry = JSON.parse(message.body);
+              setAnalytics(telemetry);
+              addTelemetryLog('STOMP', `Frame on /topic/analytics: Revenue ₹${telemetry.totalRevenue?.toLocaleString()} (${telemetry.occupancyPercentage}% Occupancy)`);
+            } catch (err) {
+              console.error('Failed to parse analytics STOMP message', err);
+            }
+          }
+        });
+
+        // 🔄 Topic 5: Real-time Stadium Reset
+        stompClient.subscribe('/topic/events/reset', (message) => {
+          if (message.body) {
+            try {
+              const data = JSON.parse(message.body);
+              addTelemetryLog('STOMP', `Frame on /topic/events/reset: Event #${data.eventId} reset to AVAILABLE`);
+              if (activeEventRef.current && activeEventRef.current.id === data.eventId) {
+                loadSeats(data.eventId);
+              }
+              showMessage('Stadium seats reset to AVAILABLE by Admin.', 'info');
+            } catch (err) {
+              console.error('Failed to parse event reset STOMP message', err);
             }
           }
         });
@@ -214,6 +289,20 @@ function App() {
       showMessage('Could not connect to backend engine.', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadToursAndVenues = async () => {
+    try {
+      const [eventsRes, venuesRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/events`),
+        axios.get(`${API_BASE_URL}/venues`).catch(() => ({ data: [] }))
+      ]);
+      setEvents(eventsRes.data);
+      setVenues(venuesRes.data);
+      addTelemetryLog('HTTP', 'Refreshed live tours & venues catalog');
+    } catch (err) {
+      console.error('Failed to refresh catalog', err);
     }
   };
 
@@ -516,7 +605,8 @@ function App() {
     return (
       <div className="loader-container">
         <div className="spinner"></div>
-        <p>Connecting to FlashPass Distributed Cloud Engine...</p>
+        <p className="loader-title">Connecting to FlashPass Distributed Cloud Engine...</p>
+        <span className="loader-subtext">Waking up container on Render (~45s on idle sleep, sub-30ms once live)</span>
       </div>
     );
   }
@@ -553,19 +643,19 @@ function App() {
           <nav className="nav-views">
             <button
               className={`view-btn ${activeTab === 'arena' ? 'active' : ''}`}
-              onClick={() => { playSound('click'); setActiveTab('arena'); }}
+              onClick={() => { playSound('click'); setActiveTab('arena'); if (activeEvent) loadSeats(activeEvent.id); }}
             >
               🏟️ Stadium Arena
             </button>
             <button
               className={`view-btn ${activeTab === 'tours' ? 'active' : ''}`}
-              onClick={() => { playSound('click'); setActiveTab('tours'); }}
+              onClick={() => { playSound('click'); setActiveTab('tours'); loadToursAndVenues(); }}
             >
               📅 Tours &amp; Venues
             </button>
             <button
               className={`view-btn ${activeTab === 'tickets' ? 'active' : ''}`}
-              onClick={() => { playSound('click'); setActiveTab('tickets'); loadMyTickets(currentUser?.username); }}
+              onClick={() => { playSound('click'); setActiveTab('tickets'); if (currentUser?.username) loadMyTickets(currentUser.username); }}
             >
               🎟️ My Tickets {myTickets.length > 0 && <span className="tab-pill">{myTickets.length}</span>}
             </button>
@@ -573,7 +663,7 @@ function App() {
             {currentUser?.role === 'ROLE_ORGANIZER' && (
               <button
                 className={`view-btn organizer ${activeTab === 'organizer' ? 'active' : ''}`}
-                onClick={() => { playSound('click'); setActiveTab('organizer'); loadAnalytics(); }}
+                onClick={() => { playSound('click'); setActiveTab('organizer'); loadAnalytics(); loadToursAndVenues(); }}
               >
                 🛠️ Organizer Portal
               </button>

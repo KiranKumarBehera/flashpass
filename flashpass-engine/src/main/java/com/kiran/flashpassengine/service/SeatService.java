@@ -99,6 +99,7 @@ public class SeatService {
 
         // 📢 Broadcast confirmed booking to all connected browsers!
         messagingTemplate.convertAndSend("/topic/seats", savedSeat);
+        broadcastAnalyticsUpdate();
         return savedSeat;
     }
 
@@ -132,6 +133,7 @@ public class SeatService {
 
         // 📢 Broadcast released seat to all connected browsers!
         messagingTemplate.convertAndSend("/topic/seats", savedSeat);
+        broadcastAnalyticsUpdate();
         return savedSeat;
     }
 
@@ -150,6 +152,8 @@ public class SeatService {
         for (Seat s : savedSeats) {
             messagingTemplate.convertAndSend("/topic/seats", s);
         }
+        messagingTemplate.convertAndSend("/topic/events/reset", (Object) java.util.Map.of("eventId", eventId));
+        broadcastAnalyticsUpdate();
         return savedSeats;
     }
 
@@ -177,6 +181,10 @@ public class SeatService {
             }
         }
         seatRepository.saveAll(seats);
+
+        // 📢 Broadcast newly scheduled tour date & updated capacity to all connected browsers!
+        messagingTemplate.convertAndSend("/topic/events", savedEvent);
+        broadcastAnalyticsUpdate();
         return savedEvent;
     }
 
@@ -209,6 +217,14 @@ public class SeatService {
         return analytics;
     }
 
+    public void broadcastAnalyticsUpdate() {
+        try {
+            messagingTemplate.convertAndSend("/topic/analytics", (Object) getAnalyticsOverview());
+        } catch (Exception e) {
+            System.err.println("Could not broadcast analytics update: " + e.getMessage());
+        }
+    }
+
     // ⏰ Background TTL Lease Expiration Daemon (Runs every 10 seconds)
     @org.springframework.scheduling.annotation.Scheduled(fixedRate = 10000)
     @Transactional
@@ -224,6 +240,9 @@ public class SeatService {
             s.setLockedAt(null);
             Seat saved = seatRepository.save(s);
             messagingTemplate.convertAndSend("/topic/seats", saved);
+        }
+        if (!expiredSeats.isEmpty()) {
+            broadcastAnalyticsUpdate();
         }
     }
 }

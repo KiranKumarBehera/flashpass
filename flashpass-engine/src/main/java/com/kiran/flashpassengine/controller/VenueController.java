@@ -3,6 +3,7 @@ package com.kiran.flashpassengine.controller;
 import com.kiran.flashpassengine.model.Venue;
 import com.kiran.flashpassengine.repository.VenueRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -13,9 +14,11 @@ import java.util.List;
 public class VenueController {
 
     private final VenueRepository venueRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    public VenueController(VenueRepository venueRepository) {
+    public VenueController(VenueRepository venueRepository, SimpMessagingTemplate messagingTemplate) {
         this.venueRepository = venueRepository;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @GetMapping
@@ -32,6 +35,8 @@ public class VenueController {
             throw new IllegalArgumentException("City is required");
         }
         Venue saved = venueRepository.save(venue);
+        // 📢 Real-Time STOMP Broadcast to all connected browsers!
+        messagingTemplate.convertAndSend("/topic/venues", saved);
         return ResponseEntity.ok(saved);
     }
 }
