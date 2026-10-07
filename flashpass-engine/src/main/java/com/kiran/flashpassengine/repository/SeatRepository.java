@@ -14,4 +14,10 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     // TTL Lease auto-expiration query: Find all seats currently LOCKED before a cutoff timestamp
     List<Seat> findByStatusAndLockedAtBefore(com.kiran.flashpassengine.model.SeatStatus status, java.time.LocalDateTime cutoff);
+
+    // Fetch all confirmed tickets booked by a specific user for "My Tickets"
+    List<Seat> findByBookedBy(String bookedBy);
+
+    // Analytics queries
+    long countByEventIdAndStatus(Long eventId, com.kiran.flashpassengine.model.SeatStatus status);
 }

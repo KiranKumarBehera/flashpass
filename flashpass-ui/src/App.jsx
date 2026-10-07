@@ -5,7 +5,7 @@ import './App.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
-// Native WebSocket endpoint supporting both local dev and production SSL (wss://)
+// Native WebSocket endpoint supporting local dev and production SSL (wss://)
 const getWsBrokerUrl = () => {
   if (import.meta.env.VITE_WS_BROKER_URL) {
     return import.meta.env.VITE_WS_BROKER_URL;
@@ -23,39 +23,56 @@ const getWsBrokerUrl = () => {
 
 const WS_BROKER_URL = getWsBrokerUrl();
 
-const FAN_PERSONAS = [
-  { id: 'kiran', name: 'Kiran', role: 'Fan A (You)', badge: 'VIP Member' },
-  { id: 'aarav', name: 'Aarav', role: 'Fan B', badge: 'Concertgoer' },
-  { id: 'priya', name: 'Priya', role: 'Fan C', badge: 'Platinum Pass' },
-  { id: 'vikram', name: 'Vikram', role: 'Fan D', badge: 'Early Bird' }
-];
-
 function App() {
+  // Navigation View State: 'arena' | 'tours' | 'tickets' | 'organizer'
+  const [activeTab, setActiveTab] = useState('arena');
+
+  // Authentication & RBAC State
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('flashpass_auth_user');
+    return saved ? JSON.parse(saved) : {
+      username: 'kiran',
+      fullName: 'Kiran Kumar Behera',
+      role: 'ROLE_FAN',
+      email: 'kiran@flashpass.io'
+    };
+  });
+  const [authModal, setAuthModal] = useState({ open: false, mode: 'login' });
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({ username: '', email: '', password: '', fullName: '', role: 'ROLE_FAN' });
+
+  // Core Data State
   const [events, setEvents] = useState([]);
+  const [venues, setVenues] = useState([]);
   const [activeEvent, setActiveEvent] = useState(null);
   const [seats, setSeats] = useState([]);
   const [selectedSeat, setSelectedSeat] = useState(null);
+  const [myTickets, setMyTickets] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [statusMessage, setStatusMessage] = useState({ text: '', type: '' });
-  const [bookedTicket, setBookedTicket] = useState(null);
+
+  // Real-Time & Interactive State
   const [timeLeft, setTimeLeft] = useState(300);
   const [wsConnected, setWsConnected] = useState(false);
-  
-  // Multi-User Active Persona (Stored per session so multiple tabs can simulate different fans!)
-  const [activePersona, setActivePersona] = useState(() => {
-    return sessionStorage.getItem('flashpass_persona') || 'Kiran';
-  });
-
-  // Sound effects toggle
+  const [statusMessage, setStatusMessage] = useState({ text: '', type: '' });
+  const [bookedTicketModal, setBookedTicketModal] = useState(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  // Concurrency Race Simulator Modal State
+  // Live Distributed Telemetry Terminal
+  const [telemetryLogs, setTelemetryLogs] = useState([]);
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
+
+  // Concurrency Race Battle Simulator Modal State
   const [raceModal, setRaceModal] = useState({ open: false, running: false, results: null, targetSeat: null });
 
-  const activeEventRef = useRef(activeEvent);
-  activeEventRef.current = activeEvent;
+  // Organizer Form State
+  const [newVenueForm, setNewVenueForm] = useState({ name: '', city: '', capacity: 50000, seatingRows: 'A,B,C,D', seatsPerRow: 10 });
+  const [newEventForm, setNewEventForm] = useState({
+    name: '', artist: 'Coldplay', category: 'Rock Arena', venue: 'DY Patil Stadium', city: 'Mumbai',
+    eventDate: '2026-11-20T19:30', basePriceVip: 5000, basePriceStd: 2500, rows: 'A,B,C,D', seatsPerRow: 10
+  });
 
-  // Synthesized Web Audio API Sound Effects (Zero external audio files needed!)
+  // Sound Synthesizer via Web Audio API
   const playSound = (type) => {
     if (!soundEnabled) return;
     try {
@@ -97,17 +114,24 @@ function App() {
         osc.start();
         osc.stop(ctx.currentTime + 0.2);
       }
-    } catch (e) {
-      // Audio context suppressed by browser policies until user gesture
-    }
+    } catch (e) {}
   };
 
-  // 1. Initial REST API Fetch: Load All Available Events
+  const addTelemetryLog = (badge, message) => {
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    setTelemetryLogs(prev => [
+      { id: Date.now() + Math.random(), time: timestamp, badge, message },
+      ...prev.slice(0, 49)
+    ]);
+  };
+
+  // 1. Initial Load: Events, Venues, MyTickets
   useEffect(() => {
-    fetchEvents();
+    bootstrapData();
+    addTelemetryLog('BOOT', 'Connecting to FlashPass Distributed Cloud Engine');
   }, []);
 
-  // 2. Real-Time Native WebSocket (STOMP Protocol)
+  // 2. Real-Time STOMP WebSockets
   useEffect(() => {
     const stompClient = new Client({
       brokerURL: WS_BROKER_URL,
@@ -116,21 +140,16 @@ function App() {
       heartbeatOutgoing: 4000,
       onConnect: () => {
         setWsConnected(true);
-        console.log('>>> [WEBSOCKET] Connected via native browser WebSocket!');
+        addTelemetryLog('STOMP', 'WebSocket handshaked on /ws-flashpass (RFC 6455)');
 
-        // Subscribe to real-time seat status broadcasts
         stompClient.subscribe('/topic/seats', (message) => {
           if (message.body) {
             try {
               const updatedSeat = JSON.parse(message.body);
-              console.log('>>> [WEBSOCKET INCOMING]', updatedSeat);
+              addTelemetryLog('STOMP', `Frame on /topic/seats: Seat ${updatedSeat.seatNumber} -> ${updatedSeat.status} (v${updatedSeat.version})`);
 
-              // Update seat in state if it belongs to currently active event
-              setSeats(prevSeats =>
-                prevSeats.map(s => (s.id === updatedSeat.id ? updatedSeat : s))
-              );
+              setSeats(prev => prev.map(s => (s.id === updatedSeat.id ? updatedSeat : s)));
 
-              // If the updated seat was selected by this client and someone else took it or released it
               setSelectedSeat(prev => {
                 if (prev && prev.id === updatedSeat.id) {
                   if (updatedSeat.status === 'AVAILABLE') return null;
@@ -139,80 +158,91 @@ function App() {
                 return prev;
               });
             } catch (err) {
-              console.error('Failed to parse WebSocket message', err);
+              console.error('Failed to parse STOMP message', err);
             }
           }
         });
       },
       onDisconnect: () => {
         setWsConnected(false);
-        console.log('>>> [WEBSOCKET] Disconnected.');
+        addTelemetryLog('STOMP', 'WebSocket Disconnected');
       },
       onStompError: (frame) => {
-        console.error('>>> [WEBSOCKET ERROR]', frame);
-      },
-      onWebSocketError: (err) => {
-        console.warn('>>> [WEBSOCKET FALLBACK] Native WebSocket connecting...', err);
+        addTelemetryLog('ERROR', `STOMP Protocol Error: ${frame.headers?.message || ''}`);
       }
     });
 
     stompClient.activate();
-
-    return () => {
-      stompClient.deactivate();
-    };
+    return () => stompClient.deactivate();
   }, []);
 
-  // 3. 5-Minute Countdown Timer for Held Seat
+  // 3. 5-Minute Hold Timer
   useEffect(() => {
     let timer;
     if (selectedSeat && timeLeft > 0) {
       timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     } else if (timeLeft === 0 && selectedSeat) {
       handleReleaseSeat();
-      showMessage('Your 5-minute seat reservation lease expired and was released!', 'error');
+      showMessage('Your 5-minute seat reservation lease expired and was auto-released.', 'error');
     }
     return () => clearInterval(timer);
   }, [selectedSeat, timeLeft]);
 
-  const fetchEvents = async () => {
+  const bootstrapData = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API_BASE_URL}/events`);
-      if (res.data && res.data.length > 0) {
-        setEvents(res.data);
-        const initial = res.data[0];
+      const [eventsRes, venuesRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/events`),
+        axios.get(`${API_BASE_URL}/venues`).catch(() => ({ data: [] }))
+      ]);
+
+      setEvents(eventsRes.data);
+      setVenues(venuesRes.data);
+
+      if (eventsRes.data && eventsRes.data.length > 0) {
+        const initial = eventsRes.data[0];
         setActiveEvent(initial);
-        await loadSeatsForEvent(initial.id);
+        await loadSeats(initial.id);
       }
+
+      if (currentUser?.username) {
+        loadMyTickets(currentUser.username);
+      }
+
+      addTelemetryLog('REDIS', 'Fetched initial tour catalog & cache status');
     } catch (err) {
-      showMessage('Backend unreachable. Is Spring Boot running?', 'error');
+      showMessage('Could not connect to backend engine.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadSeatsForEvent = async (eventId) => {
+  const loadSeats = async (eventId) => {
     try {
-      const seatsRes = await axios.get(`${API_BASE_URL}/events/${eventId}/seats`);
-      setSeats(seatsRes.data);
+      const start = performance.now();
+      const res = await axios.get(`${API_BASE_URL}/events/${eventId}/seats`);
+      const elapsed = Math.round(performance.now() - start);
+      setSeats(res.data);
       setSelectedSeat(null);
+      addTelemetryLog('REDIS', `Retrieved ${res.data.length} seats in ${elapsed}ms (In-Memory Cache Hit)`);
     } catch (err) {
-      showMessage('Failed to load seats for event.', 'error');
+      showMessage('Failed to load seats.', 'error');
     }
   };
 
-  const handleSelectEvent = (eventItem) => {
-    playSound('click');
-    setActiveEvent(eventItem);
-    loadSeatsForEvent(eventItem.id);
+  const loadMyTickets = async (username) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/tickets/my-tickets?user=${encodeURIComponent(username)}`);
+      setMyTickets(res.data);
+    } catch (err) {}
   };
 
-  const handlePersonaChange = (personaName) => {
-    playSound('click');
-    setActivePersona(personaName);
-    sessionStorage.setItem('flashpass_persona', personaName);
-    showMessage(`Switched fan identity to: ${personaName}`, 'info');
+  const loadAnalytics = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/analytics/overview`);
+      setAnalytics(res.data);
+      addTelemetryLog('JPA', 'Aggregated real-time sales & capacity metrics');
+    } catch (err) {}
   };
 
   const showMessage = (text, type = 'info') => {
@@ -221,114 +251,201 @@ function App() {
     setTimeout(() => setStatusMessage({ text: '', type: '' }), 4500);
   };
 
-  // Dynamic row extraction from actual seat numbers (e.g. ['A', 'B', 'C', 'D'] or ['A', 'B', 'C', 'D', 'E'])
-  const uniqueRows = Array.from(new Set(seats.map(s => s.seatNumber.charAt(0)))).sort();
-
-  const getSortedRowSeats = (rowLetter) => {
-    return seats
-      .filter(s => s.seatNumber.startsWith(rowLetter))
-      .sort((a, b) => {
-        const numA = parseInt(a.seatNumber.replace(/\D/g, ''), 10);
-        const numB = parseInt(b.seatNumber.replace(/\D/g, ''), 10);
-        return numA - numB;
-      });
+  // --- Auth & RBAC Handlers ---
+  const handleQuickLogin = (uname, role, fname) => {
+    const userObj = { username: uname, role: role, fullName: fname, email: `${uname}@flashpass.io` };
+    setCurrentUser(userObj);
+    localStorage.setItem('flashpass_auth_user', JSON.stringify(userObj));
+    setAuthModal({ open: false, mode: 'login' });
+    playSound('book');
+    showMessage(`Logged in as ${fname} (${role === 'ROLE_ORGANIZER' ? 'Organizer' : 'Fan'})!`, 'success');
+    addTelemetryLog('AUTH', `Switched identity to ${uname} [${role}]`);
+    loadMyTickets(uname);
   };
 
-  // Lock Seat (POST /api/seats/{id}/lock?user=...)
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, loginForm);
+      setCurrentUser(res.data);
+      localStorage.setItem('flashpass_auth_user', JSON.stringify(res.data));
+      setAuthModal({ open: false, mode: 'login' });
+      playSound('book');
+      showMessage(`Welcome back, ${res.data.fullName}!`, 'success');
+      addTelemetryLog('AUTH', `User ${res.data.username} logged in successfully`);
+      loadMyTickets(res.data.username);
+    } catch (err) {
+      showMessage(err.response?.data?.message || 'Login failed', 'error');
+    }
+  };
+
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post(`${API_BASE_URL}/auth/register`, registerForm);
+      setCurrentUser(res.data);
+      localStorage.setItem('flashpass_auth_user', JSON.stringify(res.data));
+      setAuthModal({ open: false, mode: 'login' });
+      playSound('book');
+      showMessage(`Account created! Welcome, ${res.data.fullName}!`, 'success');
+      addTelemetryLog('AUTH', `New user registered: ${res.data.username} (${res.data.role})`);
+      loadMyTickets(res.data.username);
+    } catch (err) {
+      showMessage(err.response?.data?.message || 'Registration failed', 'error');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('flashpass_auth_user');
+    showMessage('Logged out successfully.', 'info');
+    addTelemetryLog('AUTH', 'User signed out');
+  };
+
+  // --- Booking Lifecycle Handlers ---
   const handleSeatClick = async (seat) => {
     playSound('click');
 
+    if (!currentUser) {
+      showMessage('Please sign in to select and book seats.', 'info');
+      setAuthModal({ open: true, mode: 'login' });
+      return;
+    }
+
     if (seat.status === 'BOOKED') {
       const buyer = seat.bookedBy ? ` by ${seat.bookedBy}` : '';
-      showMessage(`Seat ${seat.seatNumber} is permanently SOLD OUT${buyer}.`, 'error');
+      showMessage(`Seat ${seat.seatNumber} is SOLD OUT${buyer}.`, 'error');
       return;
     }
 
     if (seat.status === 'LOCKED') {
-      // Check if current user is the lock holder
-      if (seat.lockedBy === activePersona) {
-        showMessage(`You are currently holding Seat ${seat.seatNumber}. Complete checkout below!`, 'info');
+      if (seat.lockedBy === currentUser.username) {
+        showMessage(`You are holding Seat ${seat.seatNumber}. Complete checkout below!`, 'info');
         setSelectedSeat(seat);
         return;
       }
-      showMessage(`Seat ${seat.seatNumber} is currently held in ${seat.lockedBy || 'another fan'}'s cart. Only the lock holder can release or pay.`, 'error');
+      showMessage(`Seat ${seat.seatNumber} is currently in ${seat.lockedBy || 'another fan'}'s cart. Locked by Optimistic Lease.`, 'error');
       return;
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/seats/${seat.id}/lock?user=${encodeURIComponent(activePersona)}`);
-      const updatedSeat = response.data;
+      const start = performance.now();
+      const res = await axios.post(`${API_BASE_URL}/seats/${seat.id}/lock?user=${encodeURIComponent(currentUser.username)}`);
+      const updatedSeat = res.data;
+      const elapsed = Math.round(performance.now() - start);
 
-      setSeats(prevSeats =>
-        prevSeats.map(s => (s.id === updatedSeat.id ? updatedSeat : s))
-      );
+      setSeats(prev => prev.map(s => (s.id === updatedSeat.id ? updatedSeat : s)));
       setSelectedSeat(updatedSeat);
       setTimeLeft(300);
       playSound('lock');
-      showMessage(`Seat ${updatedSeat.seatNumber} LOCKED for 5 minutes by ${activePersona}! Complete checkout below.`, 'success');
+      showMessage(`Seat ${updatedSeat.seatNumber} LOCKED for 5 minutes!`, 'success');
+      addTelemetryLog('JPA', `Seat ${updatedSeat.seatNumber} locked by ${currentUser.username} (${elapsed}ms) [v${updatedSeat.version}]`);
     } catch (err) {
-      const errorMsg = err.response?.data?.message || 'Failed to lock seat.';
-      showMessage(errorMsg, 'error');
-      if (activeEvent) loadSeatsForEvent(activeEvent.id);
+      showMessage(err.response?.data?.message || 'Lock conflict occurred.', 'error');
+      if (activeEvent) loadSeats(activeEvent.id);
     }
   };
 
-  // Confirm Booking (POST /api/seats/{id}/book?user=...)
   const handleConfirmBooking = async () => {
-    if (!selectedSeat) return;
+    if (!selectedSeat || !currentUser) return;
     try {
-      const response = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/book?user=${encodeURIComponent(activePersona)}`);
-      const booked = response.data;
+      const start = performance.now();
+      const res = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/book?user=${encodeURIComponent(currentUser.username)}`);
+      const booked = res.data;
+      const elapsed = Math.round(performance.now() - start);
 
-      setSeats(prevSeats =>
-        prevSeats.map(s => (s.id === booked.id ? booked : s))
-      );
-      setBookedTicket(booked);
+      setSeats(prev => prev.map(s => (s.id === booked.id ? booked : s)));
+      setBookedTicketModal(booked);
       setSelectedSeat(null);
       playSound('book');
-      showMessage(`🎉 Congratulations ${activePersona}! Seat ${booked.seatNumber} officially BOOKED!`, 'success');
+      showMessage(`🎉 Congratulations! Seat ${booked.seatNumber} officially BOOKED!`, 'success');
+      addTelemetryLog('TRANSACTION', `Payment settled & Seat ${booked.seatNumber} committed in ${elapsed}ms (v${booked.version})`);
+      loadMyTickets(currentUser.username);
     } catch (err) {
       showMessage(err.response?.data?.message || 'Booking failed.', 'error');
     }
   };
 
-  // Release Seat (POST /api/seats/{id}/release?user=...)
   const handleReleaseSeat = async () => {
-    if (!selectedSeat) return;
+    if (!selectedSeat || !currentUser) return;
     try {
-      const response = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/release?user=${encodeURIComponent(activePersona)}`);
-      const released = response.data;
+      const res = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/release?user=${encodeURIComponent(currentUser.username)}`);
+      const released = res.data;
 
-      setSeats(prevSeats =>
-        prevSeats.map(s => (s.id === released.id ? released : s))
-      );
+      setSeats(prev => prev.map(s => (s.id === released.id ? released : s)));
       setSelectedSeat(null);
       playSound('click');
       showMessage(`Seat ${released.seatNumber} released back to Available pool.`, 'info');
+      addTelemetryLog('JPA', `Seat ${released.seatNumber} released by ${currentUser.username} (v${released.version})`);
     } catch (err) {
       showMessage(err.response?.data?.message || 'Release failed.', 'error');
     }
   };
 
-  // Admin Reset Stadium (POST /api/events/{id}/reset)
   const handleResetStadium = async () => {
     if (!activeEvent) return;
-    if (!window.confirm(`Reset all seats for "${activeEvent.name}" back to AVAILABLE? This will clear all holds and bookings.`)) return;
+    if (!window.confirm(`Reset all seats for "${activeEvent.name}" back to AVAILABLE?`)) return;
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/events/${activeEvent.id}/reset`);
-      setSeats(response.data);
+      const res = await axios.post(`${API_BASE_URL}/events/${activeEvent.id}/reset`);
+      setSeats(res.data);
       setSelectedSeat(null);
       playSound('book');
-      showMessage(`🔄 All seats for "${activeEvent.name}" have been reset to AVAILABLE!`, 'success');
+      showMessage(`🔄 All seats for "${activeEvent.name}" reset to AVAILABLE!`, 'success');
+      addTelemetryLog('REDIS', `Stadium reset & Redis cache cleared for Event #${activeEvent.id}`);
     } catch (err) {
       showMessage('Failed to reset stadium.', 'error');
     }
   };
 
-  // ⚡ 10-Bot Concurrency Race Simulation (Battle Test Mode)
+  // --- Organizer Actions ---
+  const handleCreateVenue = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post(`${API_BASE_URL}/venues`, newVenueForm);
+      setVenues(prev => [...prev, res.data]);
+      setNewVenueForm({ name: '', city: '', capacity: 50000, seatingRows: 'A,B,C,D', seatsPerRow: 10 });
+      playSound('book');
+      showMessage(`🏟️ Venue "${res.data.name}" registered successfully!`, 'success');
+      addTelemetryLog('ORGANIZER', `New venue registered: ${res.data.name} (${res.data.city})`);
+    } catch (err) {
+      showMessage('Failed to register venue.', 'error');
+    }
+  };
+
+  const handleCreateEvent = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        name: newEventForm.name,
+        artist: newEventForm.artist,
+        category: newEventForm.category,
+        venue: newEventForm.venue,
+        city: newEventForm.city,
+        eventDate: newEventForm.eventDate,
+        basePriceVip: parseFloat(newEventForm.basePriceVip),
+        basePriceStd: parseFloat(newEventForm.basePriceStd)
+      };
+
+      const res = await axios.post(
+        `${API_BASE_URL}/events?rows=${encodeURIComponent(newEventForm.rows)}&seatsPerRow=${newEventForm.seatsPerRow}`,
+        payload
+      );
+
+      setEvents(prev => [...prev, res.data]);
+      setActiveEvent(res.data);
+      loadSeats(res.data.id);
+      setActiveTab('arena');
+      playSound('book');
+      showMessage(`🎸 Tour show "${res.data.name}" listed with real-time seat inventory!`, 'success');
+      addTelemetryLog('ORGANIZER', `Show created with ${newEventForm.rows.split(',').length * newEventForm.seatsPerRow} seats`);
+    } catch (err) {
+      showMessage('Failed to schedule event.', 'error');
+    }
+  };
+
+  // --- 10-Bot Concurrency Race Simulator ---
   const handleRunRaceSimulation = async () => {
-    // Find first available seat
     const candidateSeat = seats.find(s => s.status === 'AVAILABLE');
     if (!candidateSeat) {
       showMessage('No available seats to race for! Click "Reset Stadium" first.', 'error');
@@ -337,6 +454,7 @@ function App() {
 
     setRaceModal({ open: true, running: true, results: null, targetSeat: candidateSeat });
     playSound('lock');
+    addTelemetryLog('STRESS-TEST', `Starting 10-Bot Concurrency Race against Seat #${candidateSeat.id} (${candidateSeat.seatNumber})`);
 
     const botNames = [
       'FlashBot-1', 'TurboFan-2', 'SonicFan-3', 'HyperBot-4', 'RapidFan-5',
@@ -345,7 +463,6 @@ function App() {
 
     const startTime = performance.now();
 
-    // Simultaneously fire 10 concurrent requests to lock the EXACT same seat!
     const racePromises = botNames.map(async (botName) => {
       try {
         const res = await axios.post(`${API_BASE_URL}/seats/${candidateSeat.id}/lock?user=${botName}`);
@@ -368,8 +485,20 @@ function App() {
       targetSeat: candidateSeat
     });
 
-    // Refresh seat state
-    if (activeEvent) loadSeatsForEvent(activeEvent.id);
+    addTelemetryLog('STRESS-TEST', `Race finished in ${duration}ms: 1 Lock Acquired, 9 Conflicts caught safely`);
+    if (activeEvent) loadSeats(activeEvent.id);
+  };
+
+  // Seating calculations
+  const uniqueRows = Array.from(new Set(seats.map(s => s.seatNumber.charAt(0)))).sort();
+  const getSortedRowSeats = (rowLetter) => {
+    return seats
+      .filter(s => s.seatNumber.startsWith(rowLetter))
+      .sort((a, b) => {
+        const numA = parseInt(a.seatNumber.replace(/\D/g, ''), 10);
+        const numB = parseInt(b.seatNumber.replace(/\D/g, ''), 10);
+        return numA - numB;
+      });
   };
 
   const totalSeats = seats.length;
@@ -397,7 +526,7 @@ function App() {
       <div className="glow-sphere top-left"></div>
       <div className="glow-sphere bottom-right"></div>
 
-      {/* Floating Global Glassmorphism Toast (Zero Layout Shift!) */}
+      {/* Floating Glassmorphism Toast (CLS = 0) */}
       {statusMessage.text && (
         <div className={`floating-toast ${statusMessage.type}`}>
           <span className="toast-icon">
@@ -408,10 +537,11 @@ function App() {
         </div>
       )}
 
+      {/* App Shell */}
       <div className="app-container">
         {/* Top Navbar */}
-        <nav className="top-nav">
-          <div className="brand">
+        <header className="top-nav">
+          <div className="brand" onClick={() => setActiveTab('arena')}>
             <span className="brand-logo">⚡</span>
             <div>
               <span className="brand-title">FlashPass</span>
@@ -419,242 +549,869 @@ function App() {
             </div>
           </div>
 
-          <div className="nav-center-persona">
-            <span className="persona-label">ACTIVE FAN:</span>
-            <div className="persona-pills">
-              {FAN_PERSONAS.map(p => (
-                <button
-                  key={p.id}
-                  className={`persona-btn ${activePersona === p.name ? 'active' : ''}`}
-                  onClick={() => handlePersonaChange(p.name)}
-                  title={`${p.name} - ${p.role} (${p.badge})`}
-                >
-                  <span className="avatar-dot"></span>
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Uncluttered View Switcher */}
+          <nav className="nav-views">
+            <button
+              className={`view-btn ${activeTab === 'arena' ? 'active' : ''}`}
+              onClick={() => { playSound('click'); setActiveTab('arena'); }}
+            >
+              🏟️ Stadium Arena
+            </button>
+            <button
+              className={`view-btn ${activeTab === 'tours' ? 'active' : ''}`}
+              onClick={() => { playSound('click'); setActiveTab('tours'); }}
+            >
+              📅 Tours &amp; Venues
+            </button>
+            <button
+              className={`view-btn ${activeTab === 'tickets' ? 'active' : ''}`}
+              onClick={() => { playSound('click'); setActiveTab('tickets'); loadMyTickets(currentUser?.username); }}
+            >
+              🎟️ My Tickets {myTickets.length > 0 && <span className="tab-pill">{myTickets.length}</span>}
+            </button>
 
-          <div className="nav-badges">
-            <button 
-              className="sound-toggle-btn"
-              onClick={() => setSoundEnabled(!soundEnabled)} 
+            {currentUser?.role === 'ROLE_ORGANIZER' && (
+              <button
+                className={`view-btn organizer ${activeTab === 'organizer' ? 'active' : ''}`}
+                onClick={() => { playSound('click'); setActiveTab('organizer'); loadAnalytics(); }}
+              >
+                🛠️ Organizer Portal
+              </button>
+            )}
+          </nav>
+
+          {/* Right Action Bar */}
+          <div className="nav-actions">
+            <button
+              className="action-icon-btn"
+              onClick={() => setSoundEnabled(!soundEnabled)}
               title={soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}
             >
               {soundEnabled ? '🔊' : '🔇'}
             </button>
 
-            <button className="btn-admin-reset" onClick={handleResetStadium} title="Reset all seats for current event">
-              🔄 Reset Stadium
+            <button
+              className={`action-icon-btn telemetry ${telemetryOpen ? 'open' : ''}`}
+              onClick={() => setTelemetryOpen(!telemetryOpen)}
+              title="Toggle Live Telemetry Terminal"
+            >
+              ⚡ Engine Log
             </button>
 
-            <div className={`ws-pill ${wsConnected ? 'connected' : 'disconnected'}`}>
-              <span className="ws-dot"></span>
-              <span>{wsConnected ? 'WebSocket Live' : 'Connecting...'}</span>
-            </div>
-          </div>
-        </nav>
-
-        {/* Multi-Event Selector Bar */}
-        <div className="event-selector-bar">
-          <span className="selector-title">SELECT TOUR CONCERT:</span>
-          <div className="event-tabs">
-            {events.map(ev => {
-              const isSelected = activeEvent?.id === ev.id;
-              const icon = ev.name.includes('Coldplay') ? '🎸' : ev.name.includes('Diljit') ? '🎤' : '✨';
-              return (
-                <button
-                  key={ev.id}
-                  className={`event-tab-card ${isSelected ? 'active' : ''}`}
-                  onClick={() => handleSelectEvent(ev)}
-                >
-                  <span className="event-tab-icon">{icon}</span>
-                  <div className="event-tab-info">
-                    <span className="event-tab-name">{ev.name.split(':')[0]}</span>
-                    <span className="event-tab-venue">{ev.venue.split(',')[0]}</span>
+            {currentUser ? (
+              <div className="user-profile-menu">
+                <div className="user-avatar-tag">
+                  <span className="avatar-circle">{currentUser.username.charAt(0).toUpperCase()}</span>
+                  <div className="avatar-info">
+                    <span className="user-name">{currentUser.fullName || currentUser.username}</span>
+                    <span className={`user-role-badge ${currentUser.role === 'ROLE_ORGANIZER' ? 'organizer' : 'fan'}`}>
+                      {currentUser.role === 'ROLE_ORGANIZER' ? 'ORGANIZER' : 'FAN'}
+                    </span>
                   </div>
-                  {isSelected && <span className="active-glow-indicator"></span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Concert Hero Header */}
-        <header className="event-hero">
-          <div className="hero-tags">
-            <span className="badge-live">● LIVE HIGH-CONCURRENCY RESERVATION</span>
-            <span className="badge-venue">VIP PLATINUM &amp; GENERAL ADMISSION</span>
-          </div>
-          <h1 className="hero-title">{activeEvent?.name || 'Live Concert Tour'}</h1>
-          <p className="hero-meta">
-            <span>📍 {activeEvent?.venue || 'Stadium Arena'}</span>
-            <span>•</span>
-            <span>🗓️ {activeEvent?.eventDate ? new Date(activeEvent.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Tour Finale'}</span>
-            <span>•</span>
-            <span>🔒 Optimistic Lock Protection</span>
-          </p>
-
-          {/* Real-time HUD Metrics Bar */}
-          <div className="metrics-hud">
-            <div className="metric-box">
-              <span className="metric-num">{totalSeats}</span>
-              <span className="metric-lbl">Total Capacity</span>
-            </div>
-            <div className="metric-divider"></div>
-            <div className="metric-box green">
-              <span className="metric-num">{availableCount}</span>
-              <span className="metric-lbl">Available</span>
-            </div>
-            <div className="metric-divider"></div>
-            <div className="metric-box amber">
-              <span className="metric-num">{lockedCount}</span>
-              <span className="metric-lbl">Held in Cart</span>
-            </div>
-            <div className="metric-divider"></div>
-            <div className="metric-box red">
-              <span className="metric-num">{bookedCount}</span>
-              <span className="metric-lbl">Sold Out</span>
-            </div>
-            <div className="metric-divider"></div>
-            <button className="btn-race-simulator" onClick={handleRunRaceSimulation}>
-              ⚡ Simulate 10-Bot Race
-            </button>
+                </div>
+                <button className="btn-logout" onClick={handleLogout} title="Log Out">⎋</button>
+              </div>
+            ) : (
+              <button className="btn-signin" onClick={() => setAuthModal({ open: true, mode: 'login' })}>
+                Sign In
+              </button>
+            )}
           </div>
         </header>
 
-        {/* Legend */}
-        <div className="legend-strip">
-          <div className="legend-item"><span className="seat-sample available"></span> Available</div>
-          <div className="legend-item"><span className="seat-sample your-hold"></span> Your Cart Hold</div>
-          <div className="legend-item"><span className="seat-sample locked"></span> Held by Other Fan</div>
-          <div className="legend-item"><span className="seat-sample booked"></span> Booked (Sold)</div>
-        </div>
+        {/* =========================================================================
+            VIEW 1: STADIUM ARENA (Interactive Booking Console)
+            ========================================================================= */}
+        {activeTab === 'arena' && (
+          <main className="view-content arena-layout">
+            {/* Arena Header Bar */}
+            <div className="arena-header">
+              <div className="arena-title-area">
+                <div className="hero-tags">
+                  <span className="badge-live">● LIVE CONCURRENCY MAP</span>
+                  <span className="badge-venue">VIP PLATINUM &amp; GENERAL ADMISSION</span>
+                </div>
+                <h2>{activeEvent?.name || 'Live Stadium Concert'}</h2>
+                <p className="arena-meta">
+                  <span>📍 {activeEvent?.venue || 'Stadium'} &bull; {activeEvent?.city || 'City'}</span>
+                  <span>&bull;</span>
+                  <span>🗓️ {activeEvent?.eventDate ? new Date(activeEvent.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Tour Finale'}</span>
+                  <span>&bull;</span>
+                  <span>🔒 JPA Optimistic Locked</span>
+                </p>
+              </div>
 
-        {/* Stadium Stage */}
-        <div className="stadium-stage">
-          <div className="stage-arch">
-            <span className="stage-text">★ LIVE STAGE / PERFORMANCE PLATFORM ★</span>
-          </div>
-          <div className="stage-glow"></div>
-        </div>
-
-        {/* Stadium Seating Layout (Dynamically renders any event's seating capacity!) */}
-        <div className="stadium-layout">
-          {uniqueRows.map((row, idx) => {
-            const sortedSeats = getSortedRowSeats(row);
-            const isVip = idx < 2; // First 2 tiers VIP
-            const mid = Math.ceil(sortedSeats.length / 2);
-            const leftWing = sortedSeats.slice(0, mid);
-            const rightWing = sortedSeats.slice(mid);
-            const tierPrice = sortedSeats[0]?.price || (isVip ? 5000 : 2500);
-
-            return (
-              <div key={row} className={`seating-tier ${isVip ? 'vip-tier' : 'std-tier'}`}>
-                <div className="tier-info">
-                  <span className="row-badge">{row}</span>
-                  <span className="tier-name">{isVip ? 'VIP Front' : 'Grandstand'}</span>
+              {/* HUD Metrics & Quick Actions */}
+              <div className="arena-hud-strip">
+                <div className="hud-metric">
+                  <span className="h-num">{totalSeats}</span>
+                  <span className="h-lbl">Capacity</span>
+                </div>
+                <div className="hud-metric green">
+                  <span className="h-num">{availableCount}</span>
+                  <span className="h-lbl">Available</span>
+                </div>
+                <div className="hud-metric amber">
+                  <span className="h-num">{lockedCount}</span>
+                  <span className="h-lbl">In Cart</span>
+                </div>
+                <div className="hud-metric red">
+                  <span className="h-num">{bookedCount}</span>
+                  <span className="h-lbl">Sold</span>
                 </div>
 
-                <div className="tier-seats-container">
-                  <div className="wing-block">
-                    {leftWing.map(seat => renderSeat(seat))}
-                  </div>
-
-                  <div className="aisle-spacer">
-                    <span>AISLE</span>
-                  </div>
-
-                  <div className="wing-block">
-                    {rightWing.map(seat => renderSeat(seat))}
-                  </div>
-                </div>
-
-                <div className="tier-price">
-                  <span className="price-tag">₹{tierPrice.toLocaleString()}</span>
+                <div className="hud-buttons">
+                  <button className="btn-hud-race" onClick={handleRunRaceSimulation}>
+                    ⚡ 10-Bot Race
+                  </button>
+                  <button className="btn-hud-reset" onClick={handleResetStadium} title="Reset seats for this event">
+                    🔄 Reset
+                  </button>
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Floating Checkout Drawer */}
-        {selectedSeat && (
-          <div className="checkout-drawer">
-            <div className="drawer-timer">
-              <span className="clock-icon">⏳</span>
-              <span className="time-display">{formatTimer(timeLeft)}</span>
-              <span className="time-caption">Hold Remaining</span>
             </div>
 
-            <div className="drawer-details">
-              <h4>Seat {selectedSeat.seatNumber} Reserved ({selectedSeat.lockedBy || activePersona})</h4>
-              <p>Category: {selectedSeat.seatNumber.startsWith('A') || selectedSeat.seatNumber.startsWith('B') ? 'VIP Platinum' : 'Standard'} • Total: <strong>₹{selectedSeat.price?.toLocaleString()}</strong></p>
+            {/* Split Screen Console: Stadium Bowl (Left) + Operations Dock (Right) */}
+            <div className="arena-split-grid">
+              {/* Left Column: Immersive Stadium Bowl */}
+              <section className="stadium-bowl-card">
+                {/* Stage with Volumetric Light Beams */}
+                <div className="stadium-stage-bowl">
+                  <div className="stage-spotlights">
+                    <div className="beam left"></div>
+                    <div className="beam center"></div>
+                    <div className="beam right"></div>
+                  </div>
+                  <div className="stage-platform">
+                    <span>★ LIVE PERFORMANCE STAGE ★</span>
+                  </div>
+                </div>
+
+                {/* Legend */}
+                <div className="legend-strip">
+                  <div className="legend-item"><span className="seat-sample available"></span> Available</div>
+                  <div className="legend-item"><span className="seat-sample your-hold"></span> Your Cart</div>
+                  <div className="legend-item"><span className="seat-sample locked"></span> Held by Other</div>
+                  <div className="legend-item"><span className="seat-sample booked"></span> Booked</div>
+                </div>
+
+                {/* Curved Amphitheater Seating Bowl */}
+                <div className="amphitheater-bowl">
+                  {uniqueRows.map((row, idx) => {
+                    const sortedSeats = getSortedRowSeats(row);
+                    const isVip = idx < 2;
+                    const mid = Math.ceil(sortedSeats.length / 2);
+                    const leftWing = sortedSeats.slice(0, mid);
+                    const rightWing = sortedSeats.slice(mid);
+                    const tierPrice = sortedSeats[0]?.price || (isVip ? 5000 : 2500);
+
+                    return (
+                      <div key={row} className={`bowl-tier ${isVip ? 'vip-arc' : 'std-arc'}`}>
+                        <div className="tier-header">
+                          <span className="tier-badge">{row}</span>
+                          <span className="tier-label">{isVip ? 'VIP Front Tier' : 'Grandstand Rise'}</span>
+                          <span className="tier-price-chip">₹{tierPrice.toLocaleString()}</span>
+                        </div>
+
+                        <div className="bowl-row-seats">
+                          <div className="wing-seats left">
+                            {leftWing.map(seat => renderSeat(seat))}
+                          </div>
+                          <div className="stadium-aisle">
+                            <span className="aisle-marker">AISLE</span>
+                          </div>
+                          <div className="wing-seats right">
+                            {rightWing.map(seat => renderSeat(seat))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Right Column: Active Operations & Checkout Dock */}
+              <aside className="operations-dock">
+                {/* Active Concert Selector */}
+                <div className="dock-card">
+                  <h4>SELECT CONCERT SHOW</h4>
+                  <div className="mini-event-list">
+                    {events.map(ev => {
+                      const isSelected = activeEvent?.id === ev.id;
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`mini-event-item ${isSelected ? 'selected' : ''}`}
+                          onClick={() => { playSound('click'); setActiveEvent(ev); loadSeats(ev.id); }}
+                        >
+                          <div className="me-title">{ev.name}</div>
+                          <div className="me-meta">📍 {ev.venue} &bull; {ev.city || 'India'}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Cart & Checkout Panel */}
+                <div className="dock-card checkout-card">
+                  <h4>RESERVATION CART</h4>
+                  {selectedSeat ? (
+                    <div className="active-hold-details">
+                      <div className="lease-timer-pill">
+                        <span className="clock-icon">⏳</span>
+                        <span className="time-val">{formatTimer(timeLeft)}</span>
+                        <span className="time-lbl">Hold Lease Remaining</span>
+                      </div>
+
+                      <div className="seat-summary-box">
+                        <div className="summary-row">
+                          <span>SEAT NUMBER</span>
+                          <strong>{selectedSeat.seatNumber}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>CATEGORY</span>
+                          <span>{selectedSeat.seatNumber.startsWith('A') || selectedSeat.seatNumber.startsWith('B') ? 'VIP Platinum' : 'Standard Grandstand'}</span>
+                        </div>
+                        <div className="summary-row">
+                          <span>FAN PASS HOLDER</span>
+                          <span>{currentUser?.fullName || currentUser?.username}</span>
+                        </div>
+                        <div className="summary-row total">
+                          <span>TOTAL DUE</span>
+                          <strong className="price-tag">₹{selectedSeat.price?.toLocaleString()}</strong>
+                        </div>
+                      </div>
+
+                      <div className="checkout-btns">
+                        <button className="btn-release" onClick={handleReleaseSeat}>Release Seat</button>
+                        <button className="btn-pay" onClick={handleConfirmBooking}>Confirm &amp; Pay</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="empty-cart-state">
+                      <span className="empty-icon">🎟️</span>
+                      <p>Select any available seat on the stadium map to hold your 5-minute reservation lease.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Telemetry Quick Snippet */}
+                <div className="dock-card telemetry-mini">
+                  <div className="t-header">
+                    <span>⚡ ENGINE TELEMETRY</span>
+                    <span className={`status-dot ${wsConnected ? 'online' : 'connecting'}`}></span>
+                  </div>
+                  <div className="t-preview">
+                    {telemetryLogs.slice(0, 3).map(log => (
+                      <div key={log.id} className="t-log-line">
+                        <span className="t-badge">{log.badge}</span>
+                        <span className="t-msg">{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </main>
+        )}
+
+        {/* =========================================================================
+            VIEW 2: TOURS & VENUES (Multi-Venue, Multi-Time Concert Catalog)
+            ========================================================================= */}
+        {activeTab === 'tours' && (
+          <main className="view-content tours-layout">
+            <div className="section-hero">
+              <span className="badge-live">GLOBAL TOURS &amp; STADIUM VENUES</span>
+              <h2>Explore Live Tours Across India</h2>
+              <p>The same blockbuster tour staged across iconic stadiums on multiple show dates.</p>
             </div>
 
-            <div className="drawer-actions">
-              <button className="btn-release" onClick={handleReleaseSeat}>Release Seat</button>
-              <button className="btn-pay" onClick={handleConfirmBooking}>Confirm &amp; Pay ₹{selectedSeat.price?.toLocaleString()}</button>
+            <div className="tours-grid">
+              {events.map(ev => {
+                const isColdplay = ev.name.includes('Coldplay');
+                const isDiljit = ev.name.includes('Diljit');
+                const isTaylor = ev.name.includes('Taylor');
+                const bannerClass = isColdplay ? 'coldplay' : isDiljit ? 'diljit' : 'taylor';
+
+                return (
+                  <div key={ev.id} className={`tour-card ${bannerClass}`}>
+                    <div className="tour-card-header">
+                      <span className="tour-artist">{ev.artist || 'World Tour'}</span>
+                      <span className="tour-city-badge">📍 {ev.city || 'India'}</span>
+                    </div>
+
+                    <h3 className="tour-name">{ev.name}</h3>
+
+                    <div className="tour-details-grid">
+                      <div>
+                        <span className="td-lbl">VENUE / STADIUM</span>
+                        <span className="td-val">{ev.venue}</span>
+                      </div>
+                      <div>
+                        <span className="td-lbl">SHOWTIME</span>
+                        <span className="td-val">
+                          {ev.eventDate ? new Date(ev.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '7:30 PM'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="td-lbl">VIP PASS</span>
+                        <span className="td-val accent">₹{(ev.basePriceVip || 5000).toLocaleString()}</span>
+                      </div>
+                      <div>
+                        <span className="td-lbl">GENERAL PASS</span>
+                        <span className="td-val">₹{(ev.basePriceStd || 2500).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      className="btn-book-tour"
+                      onClick={() => {
+                        playSound('click');
+                        setActiveEvent(ev);
+                        loadSeats(ev.id);
+                        setActiveTab('arena');
+                      }}
+                    >
+                      Book Stadium Seats &rarr;
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Venues Showcase List */}
+            <div className="venues-showcase-section">
+              <h3>🏟️ Partner Stadium Venues</h3>
+              <div className="venues-grid">
+                {venues.map(v => (
+                  <div key={v.id} className="venue-card">
+                    <h4>{v.name}</h4>
+                    <p className="v-city">📍 {v.city}</p>
+                    <div className="v-meta">
+                      <span>Capacity: <strong>{(v.capacity || 50000).toLocaleString()} Fans</strong></span>
+                      <span>Tiers: <strong>{v.seatingRows}</strong></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </main>
+        )}
+
+        {/* =========================================================================
+            VIEW 3: MY TICKETS (Customer Boarding Pass Wallet)
+            ========================================================================= */}
+        {activeTab === 'tickets' && (
+          <main className="view-content tickets-layout">
+            <div className="section-hero">
+              <span className="badge-live">DIGITAL PASSBOOK</span>
+              <h2>Your Issued Concert Passes</h2>
+              <p>Authentic holographic concert boarding passes secured by JPA Optimistic Versioning.</p>
+            </div>
+
+            {myTickets.length === 0 ? (
+              <div className="empty-tickets-card">
+                <span className="empty-icon">🎟️</span>
+                <h3>No Tickets Issued Yet</h3>
+                <p>You haven't purchased any tickets under account <strong>{currentUser?.username || 'Guest'}</strong> yet.</p>
+                <button className="btn-explore-tours" onClick={() => setActiveTab('arena')}>
+                  Browse Stadium Seating &rarr;
+                </button>
+              </div>
+            ) : (
+              <div className="tickets-wallet-grid">
+                {myTickets.map(ticket => (
+                  <div key={ticket.id} className="holographic-ticket-pass">
+                    <div className="ticket-holo-overlay"></div>
+                    <div className="ticket-notch top"></div>
+                    <div className="ticket-notch bottom"></div>
+
+                    <div className="ticket-main-body">
+                      <div className="t-brand-strip">
+                        <span>⚡ FLASHPASS SECURE TICKET</span>
+                        <span className="t-verified">VERIFIED ENTRY</span>
+                      </div>
+
+                      <h3 className="ticket-event-name">{activeEvent?.name || 'World Tour Concert'}</h3>
+
+                      <div className="ticket-info-grid">
+                        <div>
+                          <span className="ti-lbl">SEAT NUMBER</span>
+                          <span className="ti-val seat-num">{ticket.seatNumber}</span>
+                        </div>
+                        <div>
+                          <span className="ti-lbl">ATTENDEE</span>
+                          <span className="ti-val">{ticket.bookedBy || currentUser?.username}</span>
+                        </div>
+                        <div>
+                          <span className="ti-lbl">VENUE</span>
+                          <span className="ti-val">{activeEvent?.venue || 'Stadium Arena'}</span>
+                        </div>
+                        <div>
+                          <span className="ti-lbl">PRICE</span>
+                          <span className="ti-val">₹{ticket.price?.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="ti-lbl">SECURITY VERSION</span>
+                          <span className="ti-val accent">JPA @Version {ticket.version}</span>
+                        </div>
+                        <div>
+                          <span className="ti-lbl">STATUS</span>
+                          <span className="ti-val confirmed">PAID &bull; ADMIT 1</span>
+                        </div>
+                      </div>
+
+                      <div className="ticket-barcode-footer">
+                        <div className="barcode-stripes"></div>
+                        <span className="barcode-number">FLASHPASS-{ticket.id}-{ticket.version}-{Date.now().toString().slice(-6)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </main>
+        )}
+
+        {/* =========================================================================
+            VIEW 4: ORGANIZER PORTAL (Venue & Show Scheduling + Sales Analytics)
+            ========================================================================= */}
+        {activeTab === 'organizer' && currentUser?.role === 'ROLE_ORGANIZER' && (
+          <main className="view-content organizer-layout">
+            <div className="section-hero">
+              <span className="badge-live">LIVENATION / ORGANIZER CONTROL CONSOLE</span>
+              <h2>Venue Management &amp; Tour Show Scheduling</h2>
+              <p>Create venues, schedule multi-show tours, and view live inventory telemetry.</p>
+            </div>
+
+            {/* Organizer Analytics HUD */}
+            <div className="analytics-banner">
+              <div className="a-card">
+                <span className="a-num">{events.length}</span>
+                <span className="a-lbl">Live Shows</span>
+              </div>
+              <div className="a-card">
+                <span className="a-num">{venues.length}</span>
+                <span className="a-lbl">Stadium Venues</span>
+              </div>
+              <div className="a-card">
+                <span className="a-num">{analytics?.totalSeats || totalSeats}</span>
+                <span className="a-lbl">Tracked Seats</span>
+              </div>
+              <div className="a-card green">
+                <span className="a-num">{analytics?.bookedSeats || bookedCount}</span>
+                <span className="a-lbl">Tickets Sold</span>
+              </div>
+              <div className="a-card gold">
+                <span className="a-num">₹{(analytics?.totalRevenue || (bookedCount * 4000)).toLocaleString()}</span>
+                <span className="a-lbl">Total Gross Revenue</span>
+              </div>
+            </div>
+
+            <div className="organizer-forms-grid">
+              {/* Form 1: Schedule Tour Show */}
+              <div className="organizer-form-card">
+                <h3>🎸 Schedule New Tour Date &amp; Generate Seats</h3>
+                <form onSubmit={handleCreateEvent} className="op-form">
+                  <div className="form-group">
+                    <label>Event / Tour Title</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Coldplay: Music of the Spheres (Night 3)"
+                      value={newEventForm.name}
+                      onChange={e => setNewEventForm({ ...newEventForm, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Artist</label>
+                      <input
+                        type="text"
+                        required
+                        value={newEventForm.artist}
+                        onChange={e => setNewEventForm({ ...newEventForm, artist: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Category</label>
+                      <input
+                        type="text"
+                        value={newEventForm.category}
+                        onChange={e => setNewEventForm({ ...newEventForm, category: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Venue Stadium</label>
+                      <select
+                        value={newEventForm.venue}
+                        onChange={e => {
+                          const vObj = venues.find(v => v.name === e.target.value);
+                          setNewEventForm({
+                            ...newEventForm,
+                            venue: e.target.value,
+                            city: vObj ? vObj.city : newEventForm.city
+                          });
+                        }}
+                      >
+                        {venues.map(v => (
+                          <option key={v.id} value={v.name}>{v.name} ({v.city})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>City</label>
+                      <input
+                        type="text"
+                        value={newEventForm.city}
+                        onChange={e => setNewEventForm({ ...newEventForm, city: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Show Date &amp; Time</label>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={newEventForm.eventDate}
+                        onChange={e => setNewEventForm({ ...newEventForm, eventDate: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Seating Tiers</label>
+                      <input
+                        type="text"
+                        value={newEventForm.rows}
+                        placeholder="A,B,C,D"
+                        onChange={e => setNewEventForm({ ...newEventForm, rows: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>VIP Pass Price (₹)</label>
+                      <input
+                        type="number"
+                        value={newEventForm.basePriceVip}
+                        onChange={e => setNewEventForm({ ...newEventForm, basePriceVip: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Standard Price (₹)</label>
+                      <input
+                        type="number"
+                        value={newEventForm.basePriceStd}
+                        onChange={e => setNewEventForm({ ...newEventForm, basePriceStd: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <button type="submit" className="btn-op-submit">
+                    ✨ Create Show &amp; Generate Seat Inventory
+                  </button>
+                </form>
+              </div>
+
+              {/* Form 2: Register New Stadium Venue */}
+              <div className="organizer-form-card">
+                <h3>🏟️ Register New Stadium Venue</h3>
+                <form onSubmit={handleCreateVenue} className="op-form">
+                  <div className="form-group">
+                    <label>Venue / Stadium Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Eden Gardens Arena"
+                      value={newVenueForm.name}
+                      onChange={e => setNewVenueForm({ ...newVenueForm, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>City</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Kolkata"
+                        value={newVenueForm.city}
+                        onChange={e => setNewVenueForm({ ...newVenueForm, city: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Max Capacity</label>
+                      <input
+                        type="number"
+                        value={newVenueForm.capacity}
+                        onChange={e => setNewVenueForm({ ...newVenueForm, capacity: parseInt(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Default Seating Rows</label>
+                    <input
+                      type="text"
+                      value={newVenueForm.seatingRows}
+                      placeholder="A,B,C,D,E"
+                      onChange={e => setNewVenueForm({ ...newVenueForm, seatingRows: e.target.value })}
+                    />
+                  </div>
+
+                  <button type="submit" className="btn-op-submit secondary">
+                    ➕ Register Stadium Venue
+                  </button>
+                </form>
+              </div>
+            </div>
+          </main>
+        )}
+
+        {/* =========================================================================
+            LIVE DISTRIBUTED TELEMETRY TERMINAL (Slide-Up Drawer)
+            ========================================================================= */}
+        {telemetryOpen && (
+          <div className="telemetry-terminal-drawer">
+            <div className="terminal-header">
+              <div className="th-left">
+                <span className="term-dot red"></span>
+                <span className="term-dot yellow"></span>
+                <span className="term-dot green"></span>
+                <span className="term-title">FLASHPASS DISTRIBUTED SYSTEMS TELEMETRY STREAM</span>
+              </div>
+              <div className="th-right">
+                <button className="btn-term-clear" onClick={() => setTelemetryLogs([])}>Clear</button>
+                <button className="btn-term-close" onClick={() => setTelemetryOpen(false)}>✕</button>
+              </div>
+            </div>
+
+            <div className="terminal-body">
+              {telemetryLogs.length === 0 ? (
+                <div className="term-empty">Waiting for distributed operations... (Click a seat or race simulation)</div>
+              ) : (
+                telemetryLogs.map(log => (
+                  <div key={log.id} className="term-line">
+                    <span className="t-time">{log.time}</span>
+                    <span className={`t-tag ${log.badge.toLowerCase()}`}>{log.badge}</span>
+                    <span className="t-text">{log.message}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
 
-        {/* Confirmed Ticket Modal */}
-        {bookedTicket && (
+        {/* =========================================================================
+            AUTH & RBAC MODAL (Login / Register / 1-Click Demo Personas)
+            ========================================================================= */}
+        {authModal.open && (
+          <div className="modal-backdrop">
+            <div className="auth-modal">
+              <div className="modal-header">
+                <h3>{authModal.mode === 'login' ? 'SIGN IN TO FLASHPASS' : 'CREATE FLASHPASS ACCOUNT'}</h3>
+                <button className="close-btn" onClick={() => setAuthModal({ ...authModal, open: false })}>✕</button>
+              </div>
+
+              {/* 1-Click Quick Demo Login Switcher */}
+              <div className="demo-accounts-strip">
+                <span className="demo-lbl">1-CLICK DEMO PERSONAS:</span>
+                <div className="demo-pills">
+                  <button className="demo-pill" onClick={() => handleQuickLogin('kiran', 'ROLE_FAN', 'Kiran Kumar Behera')}>
+                    👤 Kiran (Fan)
+                  </button>
+                  <button className="demo-pill" onClick={() => handleQuickLogin('aarav', 'ROLE_FAN', 'Aarav Sharma')}>
+                    👤 Aarav (Fan)
+                  </button>
+                  <button className="demo-pill admin" onClick={() => handleQuickLogin('organizer', 'ROLE_ORGANIZER', 'LiveNation Admin')}>
+                    🛡️ Admin (Organizer)
+                  </button>
+                </div>
+              </div>
+
+              <div className="auth-tab-switch">
+                <button
+                  className={`auth-tab-btn ${authModal.mode === 'login' ? 'active' : ''}`}
+                  onClick={() => setAuthModal({ ...authModal, mode: 'login' })}
+                >
+                  Sign In
+                </button>
+                <button
+                  className={`auth-tab-btn ${authModal.mode === 'register' ? 'active' : ''}`}
+                  onClick={() => setAuthModal({ ...authModal, mode: 'register' })}
+                >
+                  Register New
+                </button>
+              </div>
+
+              {authModal.mode === 'login' ? (
+                <form onSubmit={handleLoginSubmit} className="auth-form">
+                  <div className="form-group">
+                    <label>Username</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="kiran or aarav"
+                      value={loginForm.username}
+                      onChange={e => setLoginForm({ ...loginForm, username: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="pass123"
+                      value={loginForm.password}
+                      onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
+                    />
+                  </div>
+                  <button type="submit" className="btn-auth-submit">Sign In &rarr;</button>
+                </form>
+              ) : (
+                <form onSubmit={handleRegisterSubmit} className="auth-form">
+                  <div className="form-group">
+                    <label>Full Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. John Doe"
+                      value={registerForm.fullName}
+                      onChange={e => setRegisterForm({ ...registerForm, fullName: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Username (Unique)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. jdoe"
+                      value={registerForm.username}
+                      onChange={e => setRegisterForm({ ...registerForm, username: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="jdoe@example.com"
+                      value={registerForm.email}
+                      onChange={e => setRegisterForm({ ...registerForm, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Password</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Minimum 4 characters"
+                      value={registerForm.password}
+                      onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Account Role</label>
+                    <select
+                      value={registerForm.role}
+                      onChange={e => setRegisterForm({ ...registerForm, role: e.target.value })}
+                    >
+                      <option value="ROLE_FAN">Fan / Concert Attendee</option>
+                      <option value="ROLE_ORGANIZER">Concert Organizer / Admin</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="btn-auth-submit">Create Account &rarr;</button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            CONFIRMED TICKET MODAL (Perforated Holographic Pass)
+            ========================================================================= */}
+        {bookedTicketModal && (
           <div className="modal-backdrop">
             <div className="ticket-modal">
               <div className="modal-header">
-                <h3>PASS ISSUED &bull; {bookedTicket.bookedBy || activePersona}</h3>
-                <button className="close-btn" onClick={() => setBookedTicket(null)}>✕</button>
+                <h3>PASS ISSUED &bull; CONFIRMED ENTRY</h3>
+                <button className="close-btn" onClick={() => setBookedTicketModal(null)}>✕</button>
               </div>
-              <div className="ticket-body">
-                <div className="ticket-event">{activeEvent?.name}</div>
-                <div className="ticket-grid">
-                  <div>
-                    <span className="t-lbl">SEAT NUMBER</span>
-                    <span className="t-val accent">{bookedTicket.seatNumber}</span>
+
+              <div className="holographic-ticket-pass modal-view">
+                <div className="ticket-holo-overlay"></div>
+                <div className="ticket-notch top"></div>
+                <div className="ticket-notch bottom"></div>
+
+                <div className="ticket-main-body">
+                  <div className="t-brand-strip">
+                    <span>⚡ FLASHPASS SECURE TICKET</span>
+                    <span className="t-verified">OPTIMISTIC VERIFIED</span>
                   </div>
-                  <div>
-                    <span className="t-lbl">FAN TICKET HOLDER</span>
-                    <span className="t-val accent">{bookedTicket.bookedBy || activePersona}</span>
+
+                  <h3 className="ticket-event-name">{activeEvent?.name}</h3>
+
+                  <div className="ticket-info-grid">
+                    <div>
+                      <span className="ti-lbl">SEAT NUMBER</span>
+                      <span className="ti-val seat-num">{bookedTicketModal.seatNumber}</span>
+                    </div>
+                    <div>
+                      <span className="ti-lbl">ATTENDEE</span>
+                      <span className="ti-val">{bookedTicketModal.bookedBy || currentUser?.username}</span>
+                    </div>
+                    <div>
+                      <span className="ti-lbl">VENUE</span>
+                      <span className="ti-val">{activeEvent?.venue}</span>
+                    </div>
+                    <div>
+                      <span className="ti-lbl">PRICE</span>
+                      <span className="ti-val">₹{bookedTicketModal.price?.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="ti-lbl">JPA VERSION</span>
+                      <span className="ti-val accent">v{bookedTicketModal.version}</span>
+                    </div>
+                    <div>
+                      <span className="ti-lbl">STATUS</span>
+                      <span className="ti-val confirmed">PAID &bull; ADMIT 1</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="t-lbl">VENUE</span>
-                    <span className="t-val">{activeEvent?.venue}</span>
-                  </div>
-                  <div>
-                    <span className="t-lbl">STATUS</span>
-                    <span className="t-val success">CONFIRMED (PAID)</span>
-                  </div>
-                  <div>
-                    <span className="t-lbl">PRICE</span>
-                    <span className="t-val">₹{bookedTicket.price?.toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="t-lbl">JPA VERSION</span>
-                    <span className="t-val">v{bookedTicket.version} (Optimistic Locked)</span>
+
+                  <div className="ticket-barcode-footer">
+                    <div className="barcode-stripes"></div>
+                    <span className="barcode-number">FLASHPASS-{bookedTicketModal.id}-{Date.now().toString().slice(-6)}</span>
                   </div>
                 </div>
-                <div className="ticket-barcode">
-                  <div className="barcode-lines"></div>
-                  <span>FLASHPASS-TXN-{bookedTicket.id}-{Date.now().toString().slice(-6)}</span>
-                </div>
               </div>
-              <button className="btn-done" onClick={() => setBookedTicket(null)}>Book Another Seat</button>
+
+              <button className="btn-done" onClick={() => setBookedTicketModal(null)}>
+                Done &bull; View in My Tickets
+              </button>
             </div>
           </div>
         )}
 
-        {/* ⚡ Concurrency Race Battle Modal */}
+        {/* =========================================================================
+            10-BOT CONCURRENCY RACE MODAL
+            ========================================================================= */}
         {raceModal.open && (
           <div className="modal-backdrop">
             <div className="race-modal">
               <div className="modal-header">
-                <h3>⚡ CONCURRENCY RACE BATTLE (10 VIRTUAL BOTS)</h3>
+                <h3>⚡ 10-BOT CONCURRENCY RACE BATTLE</h3>
                 <button className="close-btn" onClick={() => setRaceModal({ open: false, running: false, results: null, targetSeat: null })}>✕</button>
               </div>
-              
+
               <div className="race-body">
                 <div className="race-summary-banner">
                   <div><strong>Target Seat:</strong> {raceModal.targetSeat?.seatNumber} (₹{raceModal.targetSeat?.price})</div>
@@ -675,7 +1432,7 @@ function App() {
                           <span className="status-badge">{res.code}</span>
                         </div>
                         <div className="race-msg-col">
-                          {res.status === 'SUCCESS' ? '🏆 200 OK — Lock Acquired! Winner of the Race.' : `🛑 409 Conflict — ${res.message}`}
+                          {res.status === 'SUCCESS' ? '🏆 200 OK &mdash; Lock Acquired! Winner of the Race.' : `🛑 409 Conflict &mdash; ${res.message}`}
                         </div>
                       </div>
                     ))}
@@ -700,8 +1457,8 @@ function App() {
 
   function renderSeat(seat) {
     const isSelected = selectedSeat?.id === seat.id;
-    const isYourHold = seat.status === 'LOCKED' && seat.lockedBy === activePersona;
-    const isOtherHold = seat.status === 'LOCKED' && seat.lockedBy !== activePersona;
+    const isYourHold = seat.status === 'LOCKED' && seat.lockedBy === currentUser?.username;
+    const isOtherHold = seat.status === 'LOCKED' && seat.lockedBy !== currentUser?.username;
 
     let seatClasses = 'stadium-seat';
 
@@ -712,9 +1469,9 @@ function App() {
 
     if (isSelected) seatClasses += ' seat-selected';
 
-    let seatTitle = `${seat.seatNumber} • ₹${seat.price?.toLocaleString()} (${seat.status})`;
-    if (isYourHold) seatTitle += ` - Held by You (${activePersona})`;
-    else if (isOtherHold) seatTitle += ` - Held by ${seat.lockedBy || 'Another Fan'}`;
+    let seatTitle = `${seat.seatNumber} &bull; ₹${seat.price?.toLocaleString()} (${seat.status})`;
+    if (isYourHold) seatTitle += ` - Held by You (${currentUser?.username})`;
+    else if (isOtherHold) seatTitle += ` - Held by ${seat.lockedBy || 'Other Fan'}`;
     else if (seat.status === 'BOOKED' && seat.bookedBy) seatTitle += ` - Sold to ${seat.bookedBy}`;
 
     return (

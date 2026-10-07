@@ -153,6 +153,62 @@ public class SeatService {
         return savedSeats;
     }
 
+    // Organizer/Admin: Create a new event show and generate seat inventory
+    @Transactional
+    @CacheEvict(value = "eventSeats", allEntries = true)
+    public Event createEventWithSeats(Event event, String rowsStr, Integer seatsPerRow) {
+        Event savedEvent = eventRepository.save(event);
+
+        String[] rows = (rowsStr != null && !rowsStr.isBlank()) 
+                ? rowsStr.split(",") 
+                : new String[]{"A", "B", "C", "D"};
+        int countPerRow = (seatsPerRow != null && seatsPerRow > 0) ? seatsPerRow : 10;
+
+        java.util.List<Seat> seats = new java.util.ArrayList<>();
+        Double vipPrice = event.getBasePriceVip() != null ? event.getBasePriceVip() : 5000.0;
+        Double stdPrice = event.getBasePriceStd() != null ? event.getBasePriceStd() : 2500.0;
+
+        for (int r = 0; r < rows.length; r++) {
+            String row = rows[r].trim().toUpperCase();
+            boolean isVip = r < 2;
+            Double price = isVip ? vipPrice : stdPrice;
+            for (int num = 1; num <= countPerRow; num++) {
+                seats.add(new Seat(row + num, SeatStatus.AVAILABLE, price, savedEvent));
+            }
+        }
+        seatRepository.saveAll(seats);
+        return savedEvent;
+    }
+
+    // Customer: Get all confirmed tickets for logged-in user
+    public java.util.List<Seat> getMyTickets(String username) {
+        if (username == null || username.isBlank()) return java.util.Collections.emptyList();
+        return seatRepository.findByBookedBy(username);
+    }
+
+    // Organizer: Analytics Overview across all events
+    public java.util.Map<String, Object> getAnalyticsOverview() {
+        java.util.Map<String, Object> analytics = new java.util.HashMap<>();
+        java.util.List<Seat> allSeats = seatRepository.findAll();
+        long totalSeats = allSeats.size();
+        long bookedSeats = allSeats.stream().filter(s -> s.getStatus() == SeatStatus.BOOKED).count();
+        long lockedSeats = allSeats.stream().filter(s -> s.getStatus() == SeatStatus.LOCKED).count();
+        long availableSeats = allSeats.stream().filter(s -> s.getStatus() == SeatStatus.AVAILABLE).count();
+        double totalRevenue = allSeats.stream()
+                .filter(s -> s.getStatus() == SeatStatus.BOOKED && s.getPrice() != null)
+                .mapToDouble(Seat::getPrice)
+                .sum();
+
+        analytics.put("totalEvents", eventRepository.count());
+        analytics.put("totalSeats", totalSeats);
+        analytics.put("bookedSeats", bookedSeats);
+        analytics.put("lockedSeats", lockedSeats);
+        analytics.put("availableSeats", availableSeats);
+        analytics.put("occupancyPercentage", totalSeats > 0 ? Math.round(((double) bookedSeats / totalSeats) * 100) : 0);
+        analytics.put("totalRevenue", totalRevenue);
+        return analytics;
+    }
+
     // ⏰ Background TTL Lease Expiration Daemon (Runs every 10 seconds)
     @org.springframework.scheduling.annotation.Scheduled(fixedRate = 10000)
     @Transactional
