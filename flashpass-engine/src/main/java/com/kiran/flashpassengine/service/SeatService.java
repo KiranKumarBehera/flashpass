@@ -20,13 +20,16 @@ public class SeatService {
 
     private final EventRepository eventRepository;
     private final SeatRepository seatRepository;
+    private final com.kiran.flashpassengine.repository.PaymentTransactionRepository paymentTransactionRepository;
     private final SimpMessagingTemplate messagingTemplate; // 📡 WebSocket Broadcaster
 
     public SeatService(EventRepository eventRepository, 
                        SeatRepository seatRepository, 
+                       com.kiran.flashpassengine.repository.PaymentTransactionRepository paymentTransactionRepository,
                        SimpMessagingTemplate messagingTemplate) {
         this.eventRepository = eventRepository;
         this.seatRepository = seatRepository;
+        this.paymentTransactionRepository = paymentTransactionRepository;
         this.messagingTemplate = messagingTemplate;
     }
 
@@ -122,6 +125,14 @@ public class SeatService {
                     && seat.getBookedBy() != null && !seat.getBookedBy().equalsIgnoreCase(user)) {
                 throw new SeatUnavailableException("Cannot cancel Seat " + seat.getSeatNumber() + ": booked by " + seat.getBookedBy());
             }
+            // 💸 Audit Trail: Record automatic refund on payment transaction
+            paymentTransactionRepository.findFirstBySeatIdAndStatusOrderByCreatedAtDesc(
+                    seatId, com.kiran.flashpassengine.model.PaymentStatus.SUCCESS
+            ).ifPresent(txn -> {
+                txn.setStatus(com.kiran.flashpassengine.model.PaymentStatus.REFUNDED);
+                txn.setCompletedAt(java.time.LocalDateTime.now());
+                paymentTransactionRepository.save(txn);
+            });
         } else if (seat.getStatus() == SeatStatus.LOCKED) {
             // Validate user identity: only lock holder or ADMIN can release
             if (seat.getLockedBy() != null && user != null && !"ADMIN".equalsIgnoreCase(user) && !"ORGANIZER".equalsIgnoreCase(user)
