@@ -89,8 +89,6 @@ function App() {
     duration: 0
   });
 
-  // Scalability Matrix Data State
-  const [scalabilityData, setScalabilityData] = useState(null);
 
   // Organizer Form State
   const [newVenueForm, setNewVenueForm] = useState({ name: '', city: '', capacity: 50000, seatingRows: 'A,B,C,D', seatsPerRow: 10 });
@@ -175,7 +173,7 @@ function App() {
         setWsConnected(true);
         addTelemetryLog('STOMP', 'WebSocket handshaked on /ws-flashpass (RFC 6455)');
 
-        // 💺 Topic 1: Real-time Seat Locks, Bookings & Releases
+        // Topic 1: Real-time Seat Locks, Bookings & Releases
         stompClient.subscribe('/topic/seats', (message) => {
           if (message.body) {
             try {
@@ -202,7 +200,7 @@ function App() {
           }
         });
 
-        // 🏟️ Topic 2: Real-time Venue Registrations
+        // Topic 2: Real-time Venue Registrations
         stompClient.subscribe('/topic/venues', (message) => {
           if (message.body) {
             try {
@@ -212,14 +210,14 @@ function App() {
                 if (prev.some(v => v.id === newVenue.id)) return prev;
                 return [...prev, newVenue];
               });
-              showMessage(`🏟️ New Venue added: ${newVenue.name} (${newVenue.city})!`, 'info');
+              showMessage(`New venue added: ${newVenue.name} (${newVenue.city})`, 'info');
             } catch (err) {
               console.error('Failed to parse venue STOMP message', err);
             }
           }
         });
 
-        // 🎸 Topic 3: Real-time Tour Show Schedules
+        // Topic 3: Real-time Tour Show Schedules
         stompClient.subscribe('/topic/events', (message) => {
           if (message.body) {
             try {
@@ -229,14 +227,14 @@ function App() {
                 if (prev.some(e => e.id === newEvt.id)) return prev;
                 return [...prev, newEvt];
               });
-              showMessage(`🎸 New Tour Show announced: ${newEvt.name}!`, 'info');
+              showMessage(`New tour show announced: ${newEvt.name}`, 'info');
             } catch (err) {
               console.error('Failed to parse event STOMP message', err);
             }
           }
         });
 
-        // 📊 Topic 4: Real-time Financial & Capacity Telemetry for Organizers
+        // Topic 4: Real-time Financial & Capacity Telemetry for Organizers
         stompClient.subscribe('/topic/analytics', (message) => {
           if (message.body) {
             try {
@@ -249,7 +247,7 @@ function App() {
           }
         });
 
-        // 🔄 Topic 5: Real-time Stadium Reset
+        // Topic 5: Real-time Stadium Reset
         stompClient.subscribe('/topic/events/reset', (message) => {
           if (message.body) {
             try {
@@ -474,7 +472,7 @@ function App() {
       setBookedTicketModal(booked);
       setSelectedSeat(null);
       playSound('book');
-      showMessage(`🎉 Congratulations! Seat ${booked.seatNumber} officially BOOKED!`, 'success');
+      showMessage(`Seat ${booked.seatNumber} officially booked and confirmed.`, 'success');
       addTelemetryLog('TRANSACTION', `Payment settled & Seat ${booked.seatNumber} committed in ${elapsed}ms (v${booked.version})`);
       loadMyTickets(currentUser.username);
     } catch (err) {
@@ -511,7 +509,7 @@ function App() {
       setSeats(res.data);
       setSelectedSeat(null);
       playSound('book');
-      showMessage(`🔄 All seats for "${activeEvent.name}" reset to AVAILABLE!`, 'success');
+      showMessage(`All seats for "${activeEvent.name}" reset to Available.`, 'success');
       addTelemetryLog('REDIS', `Admin ${currentUser.username} reset stadium for Event #${activeEvent.id}`);
     } catch (err) {
       showMessage(err.response?.data?.message || 'Failed to reset stadium.', 'error');
@@ -545,7 +543,7 @@ function App() {
       setVenues(prev => [...prev, res.data]);
       setNewVenueForm({ name: '', city: '', capacity: 50000, seatingRows: 'A,B,C,D', seatsPerRow: 10 });
       playSound('book');
-      showMessage(`🏟️ Venue "${res.data.name}" registered successfully!`, 'success');
+      showMessage(`Venue "${res.data.name}" registered successfully.`, 'success');
       addTelemetryLog('ORGANIZER', `New venue registered: ${res.data.name} (${res.data.city})`);
     } catch (err) {
       showMessage(err.response?.data?.message || 'Failed to register venue.', 'error');
@@ -577,7 +575,7 @@ function App() {
       loadSeats(res.data.id);
       setActiveTab('arena');
       playSound('book');
-      showMessage(`🎸 Tour show "${res.data.name}" listed with real-time seat inventory!`, 'success');
+      showMessage(`Tour show "${res.data.name}" listed with real-time seat inventory.`, 'success');
       addTelemetryLog('ORGANIZER', `Show created with ${newEventForm.rows.split(',').length * newEventForm.seatsPerRow} seats`);
     } catch (err) {
       showMessage(err.response?.data?.message || 'Failed to schedule event.', 'error');
@@ -606,7 +604,7 @@ function App() {
     const racePromises = botNames.map(async (botName) => {
       try {
         const res = await axios.post(`${API_BASE_URL}/seats/${candidateSeat.id}/lock?user=${botName}`);
-        return { bot: botName, status: 'SUCCESS', code: 200, message: 'Lock Acquired (Winner 🏆)' };
+        return { bot: botName, status: 'SUCCESS', code: 200, message: 'Lock Acquired (Winner)' };
       } catch (err) {
         const status = err.response?.status || 500;
         const msg = err.response?.data?.message || 'OptimisticLock Collision';
@@ -685,7 +683,7 @@ function App() {
       setSelectedSeat(null);
       setPaymentModal(prev => ({ ...prev, open: false, processing: false }));
       playSound('book');
-      showMessage(`🎉 Payment Settled (${res.data.transactionRef})! Holographic Pass issued.`, 'success');
+      showMessage(`Payment settled (${res.data.transactionRef}). Pass issued.`, 'success');
       addTelemetryLog('PAYMENT', `Charged ₹${res.data.amountCharged} via ${paymentModal.method} [Txn: ${res.data.transactionRef}] in ${elapsed}ms`);
       loadMyTickets(currentUser.username);
     } catch (err) {
@@ -731,16 +729,6 @@ function App() {
     } catch (err) {
       setQueueModal(prev => ({ ...prev, simulating: false }));
       showMessage('Failed to run queue simulation.', 'error');
-    }
-  };
-
-  // --- Scalability Blueprint Loader ---
-  const loadScalabilityBlueprint = async () => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/scalability/blueprint`);
-      setScalabilityData(res.data);
-    } catch (err) {
-      console.warn('Scalability API unavailable', err);
     }
   };
 
@@ -798,7 +786,17 @@ function App() {
         {/* Top Navbar */}
         <header className="top-nav">
           <div className="brand" onClick={() => setActiveTab('arena')}>
-            <span className="brand-logo">⚡</span>
+            <span className="brand-logo" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill="url(#fpGrad)" stroke="none" />
+                <defs>
+                  <linearGradient id="fpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#38bdf8" />
+                    <stop offset="100%" stopColor="#818cf8" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </span>
             <div>
               <span className="brand-title">FlashPass</span>
               <span className="engine-tag">DISTRIBUTED CONCURRENCY ENGINE</span>
@@ -811,25 +809,19 @@ function App() {
               className={`view-btn ${activeTab === 'arena' ? 'active' : ''}`}
               onClick={() => { playSound('click'); setActiveTab('arena'); if (activeEvent) loadSeats(activeEvent.id); }}
             >
-              🏟️ Stadium Arena
+              Stadium Arena
             </button>
             <button
               className={`view-btn ${activeTab === 'tours' ? 'active' : ''}`}
               onClick={() => { playSound('click'); setActiveTab('tours'); loadToursAndVenues(); }}
             >
-              📅 Tours &amp; Venues
+              Tours &amp; Venues
             </button>
             <button
               className={`view-btn ${activeTab === 'tickets' ? 'active' : ''}`}
               onClick={() => { playSound('click'); setActiveTab('tickets'); if (currentUser?.username) loadMyTickets(currentUser.username); }}
             >
-              🎟️ My Tickets {myTickets.length > 0 && <span className="tab-pill">{myTickets.length}</span>}
-            </button>
-            <button
-              className={`view-btn ${activeTab === 'scalability' ? 'active' : ''}`}
-              onClick={() => { playSound('click'); setActiveTab('scalability'); loadScalabilityBlueprint(); }}
-            >
-              🚀 Scalability &amp; Architecture
+              My Tickets {myTickets.length > 0 && <span className="tab-pill">{myTickets.length}</span>}
             </button>
 
             {currentUser?.role === 'ROLE_ORGANIZER' && (
@@ -837,7 +829,7 @@ function App() {
                 className={`view-btn organizer ${activeTab === 'organizer' ? 'active' : ''}`}
                 onClick={() => { playSound('click'); setActiveTab('organizer'); loadAnalytics(); loadToursAndVenues(); }}
               >
-                🛠️ Organizer Portal
+                Organizer Portal
               </button>
             )}
           </nav>
@@ -849,7 +841,18 @@ function App() {
               onClick={() => setSoundEnabled(!soundEnabled)}
               title={soundEnabled ? 'Mute Sounds' : 'Unmute Sounds'}
             >
-              {soundEnabled ? '🔊' : '🔇'}
+              {soundEnabled ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
+                </svg>
+              )}
             </button>
 
             <button
@@ -857,7 +860,11 @@ function App() {
               onClick={() => setTelemetryOpen(!telemetryOpen)}
               title="Toggle Live Telemetry Terminal"
             >
-              ⚡ Engine Log
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              Engine Log
             </button>
 
             {currentUser ? (
@@ -871,7 +878,13 @@ function App() {
                     </span>
                   </div>
                 </div>
-                <button className="btn-logout" onClick={handleLogout} title="Log Out">⎋</button>
+                <button className="btn-logout" onClick={handleLogout} title="Sign Out">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                </button>
               </div>
             ) : (
               <button className="btn-signin" onClick={() => setAuthModal({ open: true, mode: 'login' })}>
@@ -890,16 +903,16 @@ function App() {
             <div className="arena-header">
               <div className="arena-title-area">
                 <div className="hero-tags">
-                  <span className="badge-live">● LIVE CONCURRENCY MAP</span>
+                  <span className="badge-live">LIVE CONCURRENCY MAP</span>
                   <span className="badge-venue">VIP PLATINUM &amp; GENERAL ADMISSION</span>
                 </div>
                 <h2>{activeEvent?.name || 'Live Stadium Concert'}</h2>
                 <p className="arena-meta">
-                  <span>📍 {activeEvent?.venue || 'Stadium'} &bull; {activeEvent?.city || 'City'}</span>
+                  <span>{activeEvent?.venue || 'Stadium'} &bull; {activeEvent?.city || 'City'}</span>
                   <span>&bull;</span>
-                  <span>🗓️ {activeEvent?.eventDate ? new Date(activeEvent.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Tour Finale'}</span>
+                  <span>{activeEvent?.eventDate ? new Date(activeEvent.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Tour Finale'}</span>
                   <span>&bull;</span>
-                  <span>🔒 JPA Optimistic Locked</span>
+                  <span>Optimistic Concurrency Active</span>
                 </p>
               </div>
 
@@ -924,14 +937,14 @@ function App() {
 
                 <div className="hud-buttons">
                   <button className="btn-hud-queue" onClick={handleOpenQueueModal} title="100,000-User Virtual Waiting Room Surge Test">
-                    🎟️ 100k Queue Sim
+                    100k Waiting Room
                   </button>
                   <button className="btn-hud-race" onClick={handleRunRaceSimulation} title="Run Concurrency Battle Stress Test">
-                    ⚡ 10-Bot Race
+                    10-Bot Concurrency Test
                   </button>
                   {(currentUser?.role === 'ROLE_ORGANIZER' || currentUser?.role === 'ROLE_ADMIN') && (
                     <button className="btn-hud-reset" onClick={handleResetStadium} title="Organizer Action: Reset all seats to AVAILABLE">
-                      🔄 Reset Stadium
+                      Reset Stadium
                     </button>
                   )}
                 </div>
@@ -950,7 +963,7 @@ function App() {
                     <div className="beam right"></div>
                   </div>
                   <div className="stage-platform">
-                    <span>★ LIVE PERFORMANCE STAGE ★</span>
+                    <span>LIVE PERFORMANCE STAGE</span>
                   </div>
                 </div>
 
@@ -1012,7 +1025,7 @@ function App() {
                           onClick={() => { playSound('click'); setActiveEvent(ev); loadSeats(ev.id); }}
                         >
                           <div className="me-title">{ev.name}</div>
-                          <div className="me-meta">📍 {ev.venue} &bull; {ev.city || 'India'}</div>
+                          <div className="me-meta">{ev.venue} &bull; {ev.city || 'India'}</div>
                         </div>
                       );
                     })}
@@ -1025,7 +1038,10 @@ function App() {
                   {selectedSeat ? (
                     <div className="active-hold-details">
                       <div className="lease-timer-pill">
-                        <span className="clock-icon">⏳</span>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.85 }}>
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
                         <span className="time-val">{formatTimer(timeLeft)}</span>
                         <span className="time-lbl">Hold Lease Remaining</span>
                       </div>
@@ -1051,12 +1067,15 @@ function App() {
 
                       <div className="checkout-btns">
                         <button className="btn-release" onClick={handleReleaseSeat}>Release Seat</button>
-                        <button className="btn-pay" onClick={handleOpenPaymentModal}>⚡ Proceed to Checkout</button>
+                        <button className="btn-pay" onClick={handleOpenPaymentModal}>Proceed to Checkout &rarr;</button>
                       </div>
                     </div>
                   ) : (
                     <div className="empty-cart-state">
-                      <span className="empty-icon">🎟️</span>
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, marginBottom: '8px' }}>
+                        <rect x="3" y="4" width="18" height="16" rx="2" />
+                        <path d="M7 8h10M7 12h10M7 16h6" />
+                      </svg>
                       <p>Select any available seat on the stadium map to hold your 5-minute reservation lease.</p>
                     </div>
                   )}
@@ -1065,7 +1084,7 @@ function App() {
                 {/* Telemetry Quick Snippet */}
                 <div className="dock-card telemetry-mini">
                   <div className="t-header">
-                    <span>⚡ ENGINE TELEMETRY</span>
+                    <span>ENGINE TELEMETRY</span>
                     <span className={`status-dot ${wsConnected ? 'online' : 'connecting'}`}></span>
                   </div>
                   <div className="t-preview">
@@ -1104,7 +1123,7 @@ function App() {
                   <div key={ev.id} className={`tour-card ${bannerClass}`}>
                     <div className="tour-card-header">
                       <span className="tour-artist">{ev.artist || 'World Tour'}</span>
-                      <span className="tour-city-badge">📍 {ev.city || 'India'}</span>
+                      <span className="tour-city-badge">{ev.city || 'India'}</span>
                     </div>
 
                     <h3 className="tour-name">{ev.name}</h3>
@@ -1148,12 +1167,12 @@ function App() {
 
             {/* Venues Showcase List */}
             <div className="venues-showcase-section">
-              <h3>🏟️ Partner Stadium Venues</h3>
+              <h3>Partner Stadium Venues</h3>
               <div className="venues-grid">
                 {venues.map(v => (
                   <div key={v.id} className="venue-card">
                     <h4>{v.name}</h4>
-                    <p className="v-city">📍 {v.city}</p>
+                    <p className="v-city">{v.city}</p>
                     <div className="v-meta">
                       <span>Capacity: <strong>{(v.capacity || 50000).toLocaleString()} Fans</strong></span>
                       <span>Tiers: <strong>{v.seatingRows}</strong></span>
@@ -1178,7 +1197,10 @@ function App() {
 
             {myTickets.length === 0 ? (
               <div className="empty-tickets-card">
-                <span className="empty-icon">🎟️</span>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, marginBottom: '12px' }}>
+                  <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
+                  <path d="M13 5v2m0 4v2m0 4v2"/>
+                </svg>
                 <h3>No Tickets Issued Yet</h3>
                 <p>You haven't purchased any tickets under account <strong>{currentUser?.username || 'Guest'}</strong> yet.</p>
                 <button className="btn-explore-tours" onClick={() => setActiveTab('arena')}>
@@ -1195,7 +1217,7 @@ function App() {
 
                     <div className="ticket-main-body">
                       <div className="t-brand-strip">
-                        <span>⚡ FLASHPASS SECURE TICKET</span>
+                        <span>FLASHPASS SECURE TICKET</span>
                         <span className="t-verified">VERIFIED ENTRY</span>
                       </div>
 
@@ -1238,7 +1260,7 @@ function App() {
                           className="btn-cancel-pass"
                           onClick={() => handleCancelMyTicket(ticket)}
                         >
-                          ✕ Cancel Pass &amp; Release Seat
+                          Cancel Pass &amp; Release Seat
                         </button>
                       </div>
                     </div>
@@ -1287,7 +1309,7 @@ function App() {
             <div className="organizer-forms-grid">
               {/* Form 1: Schedule Tour Show */}
               <div className="organizer-form-card">
-                <h3>🎸 Schedule New Tour Date &amp; Generate Seats</h3>
+                <h3>Schedule Tour Date &amp; Generate Seats</h3>
                 <form onSubmit={handleCreateEvent} className="op-form">
                   <div className="form-group">
                     <label>Event / Tour Title</label>
@@ -1392,14 +1414,14 @@ function App() {
                   </div>
 
                   <button type="submit" className="btn-op-submit">
-                    ✨ Create Show &amp; Generate Seat Inventory
+                    Create Show &amp; Generate Seat Inventory
                   </button>
                 </form>
               </div>
 
               {/* Form 2: Register New Stadium Venue */}
               <div className="organizer-form-card">
-                <h3>🏟️ Register New Stadium Venue</h3>
+                <h3>Register New Stadium Venue</h3>
                 <form onSubmit={handleCreateVenue} className="op-form">
                   <div className="form-group">
                     <label>Venue / Stadium Name</label>
@@ -1445,7 +1467,7 @@ function App() {
                   </div>
 
                   <button type="submit" className="btn-op-submit secondary">
-                    ➕ Register Stadium Venue
+                    Register Stadium Venue
                   </button>
                 </form>
               </div>
@@ -1453,166 +1475,6 @@ function App() {
           </main>
         )}
 
-        {/* =========================================================================
-            VIEW 5: SCALABILITY & SYSTEM ARCHITECTURE BLUEPRINT
-            ========================================================================= */}
-        {activeTab === 'scalability' && (
-          <main className="view-content scalability-layout">
-            <div className="scalability-hero">
-              <span className="badge-live">● DISTRIBUTED SYSTEMS ARCHITECTURE</span>
-              <h2>High-Concurrency &amp; Scalability Matrix</h2>
-              <p>
-                An exhaustive engineering blueprint analyzing how FlashPass survives 100,000 concurrent fans,
-                evaluating Vertical Scale-Up constraints, Horizontal Scale-Out topologies, and database connection multiplexing.
-              </p>
-            </div>
-
-            {/* Vertical Scalability Card */}
-            <div className="scalability-section-card">
-              <span className="sec-title-badge vertical">VERTICAL SCALABILITY (SCALE-UP)</span>
-              <h3>Single-Host Resource Sizing &amp; Saturation Limits</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', marginBottom: '14px', lineHeight: '1.5' }}>
-                Vertical scaling enhances CPU clock frequencies, JVM heap allocations, and OS network buffers on a single box.
-                However, database connection pools (HikariCP) and Linux file descriptors impose hard ceilings.
-              </p>
-
-              <div className="scalability-table-wrapper">
-                <table className="scalability-table">
-                  <thead>
-                    <tr>
-                      <th>Host Tier</th>
-                      <th>Hardware Profile</th>
-                      <th>Max WebSockets</th>
-                      <th>Throughput</th>
-                      <th>HikariCP Pool</th>
-                      <th>Bottleneck Analysis</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td><span className="tier-badge">Render Free Tier</span></td>
-                      <td>0.5 vCPU shared, 512 MB RAM</td>
-                      <td>1,500 connections</td>
-                      <td>350 RPS</td>
-                      <td>10 connections</td>
-                      <td>Memory-constrained JVM heap; unthrottled bursts trigger 504 Gateway Timeouts</td>
-                    </tr>
-                    <tr>
-                      <td><span className="tier-badge prod">AWS c6i.2xlarge</span></td>
-                      <td>8 vCPUs dedicated, 16 GB RAM</td>
-                      <td>25,000 connections</td>
-                      <td>4,800 RPS</td>
-                      <td>30 connections</td>
-                      <td>Single Point of Failure (SPOF); bounded by Linux kernel socket buffer (somaxconn)</td>
-                    </tr>
-                    <tr>
-                      <td><span className="tier-badge extreme">AWS c6i.8xlarge</span></td>
-                      <td>32 vCPUs dedicated, 64 GB RAM</td>
-                      <td>100,000 connections</td>
-                      <td>16,500 RPS</td>
-                      <td>60 connections</td>
-                      <td>Exponential cloud cost curve; GC pause overhead without ZGC low-latency flags</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Horizontal Scalability Card */}
-            <div className="scalability-section-card">
-              <span className="sec-title-badge horizontal">HORIZONTAL SCALABILITY (SCALE-OUT)</span>
-              <h3>Stateless Cluster Topology &amp; Multi-Node Federation</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', marginBottom: '14px', lineHeight: '1.5' }}>
-                By maintaining completely stateless application servers, FlashPass scales out elastically behind an Anycast Layer-7 Load Balancer.
-              </p>
-
-              <div className="scalability-table-wrapper">
-                <table className="scalability-table">
-                  <thead>
-                    <tr>
-                      <th>Cluster Size</th>
-                      <th>Peak Capacity</th>
-                      <th>Concurrent Fans</th>
-                      <th>Estimated Cost</th>
-                      <th>Recommended Scenario</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td><strong>1 Node</strong></td>
-                      <td>850 RPS</td>
-                      <td>2,500 concurrent fans</td>
-                      <td>$0.00 / month</td>
-                      <td>Baseline Cloud Hosting (Neon + Upstash Free Tier)</td>
-                    </tr>
-                    <tr>
-                      <td><strong>5 Nodes</strong></td>
-                      <td>12,500 RPS</td>
-                      <td>50,000 concurrent fans</td>
-                      <td>~$180 / month</td>
-                      <td>Arena Tour On-Sale (Arenas &amp; 20k Auditoriums)</td>
-                    </tr>
-                    <tr>
-                      <td><strong>15 Nodes + Redis Cluster</strong></td>
-                      <td>42,000 RPS</td>
-                      <td>150,000 concurrent fans</td>
-                      <td>~$540 / month</td>
-                      <td>Stadium Flash Drop (Coldplay, Taylor Swift 100k+ surges)</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="arch-flow-diagram">
-{`+---------------------------------------------------------------------------------+
-|                       HIGH-SCALE CLUSTER TOPOLOGY (100,000 FANS)                |
-+---------------------------------------------------------------------------------+
-                              [ AWS Route 53 Anycast DNS ]
-                                           |
-                                           v
-                       [ AWS ALB / Cloudflare Layer-7 Balancer ]
-                                           |
-          +--------------------------------+-------------------------------+
-          v                                v                               v
-[ FlashPass Engine #1 ]          [ FlashPass Engine #2 ]         [ FlashPass Engine #N ]
-  Spring Boot 3.3                  Spring Boot 3.3                 Spring Boot 3.3
-          |                                |                               |
-          +--------------------------------+-------------------------------+
-                                           |
-                   +-----------------------+-----------------------+
-                   v                                               v
-     [ Upstash / AWS Redis Cluster ]                 [ PgBouncer Connection Pooler ]
-     - In-Memory Pre-Locks (0.15ms)                  - 10,000 App Threads -> 40 Conns
-     - Multi-Node WebSocket STOMP Relay              - Zero DB Pool Starvation
-     - 100k Virtual Waiting Room (ZSET)                            |
-                                                                   v
-                                                     [ Neon PostgreSQL Cluster ]
-                                                     - Primary Writer (Locks & Books)
-                                                     - Read Replicas (Layouts & Tours)`}
-              </div>
-            </div>
-
-            {/* Mathematical Concurrency Defense Card */}
-            <div className="scalability-section-card">
-              <span className="sec-title-badge math">MATHEMATICAL CONCURRENCY MODEL</span>
-              <h3>Collision Defense &amp; Token Bucket Ingestion Formulas</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-                <div className="ps-row">
-                  <span>Optimistic Lock Collision Probability:</span>
-                  <code style={{ background: 'rgba(0,0,0,0.4)', padding: '2px 8px', borderRadius: '4px' }}>P(collision) = 1 - (1 - 1/N)^k (where N = stadium seats, k = concurrent clicking fans)</code>
-                </div>
-                <div className="ps-row">
-                  <span>Redis Ingress Elimination Ratio:</span>
-                  <strong style={{ color: '#34d399' }}>99.98% of collision attempts resolved in-memory in 0.15ms</strong>
-                </div>
-                <div className="ps-row">
-                  <span>Waiting Room Low-Pass Throttling:</span>
-                  <strong style={{ color: '#c084fc' }}>Absorbs 100k fan stampede &rarr; admits 250 fans/sec (HikariCP saturation: 14/20 conns)</strong>
-                </div>
-              </div>
-            </div>
-          </main>
-        )}
 
         {/* =========================================================================
             LIVE DISTRIBUTED TELEMETRY TERMINAL (Slide-Up Drawer)
@@ -1664,13 +1526,13 @@ function App() {
                 <span className="demo-lbl">1-CLICK DEMO PERSONAS:</span>
                 <div className="demo-pills">
                   <button className="demo-pill" onClick={() => handleQuickLogin('kiran', 'ROLE_FAN', 'Kiran Kumar Behera')}>
-                    👤 Kiran (Fan)
+                    Kiran (Fan)
                   </button>
                   <button className="demo-pill" onClick={() => handleQuickLogin('aarav', 'ROLE_FAN', 'Aarav Sharma')}>
-                    👤 Aarav (Fan)
+                    Aarav (Fan)
                   </button>
                   <button className="demo-pill admin" onClick={() => handleQuickLogin('organizer', 'ROLE_ORGANIZER', 'LiveNation Admin')}>
-                    🛡️ Admin (Organizer)
+                    Admin (Organizer)
                   </button>
                 </div>
               </div>
@@ -1791,7 +1653,7 @@ function App() {
 
                 <div className="ticket-main-body">
                   <div className="t-brand-strip">
-                    <span>⚡ FLASHPASS SECURE TICKET</span>
+                    <span>FLASHPASS SECURE TICKET</span>
                     <span className="t-verified">OPTIMISTIC VERIFIED</span>
                   </div>
 
@@ -1845,7 +1707,7 @@ function App() {
           <div className="modal-backdrop">
             <div className="race-modal">
               <div className="modal-header">
-                <h3>⚡ 10-BOT CONCURRENCY RACE BATTLE</h3>
+                <h3>10-Bot Concurrency Race Test</h3>
                 <button className="close-btn" onClick={() => setRaceModal({ open: false, running: false, results: null, targetSeat: null })}>✕</button>
               </div>
 
@@ -1869,13 +1731,13 @@ function App() {
                           <span className="status-badge">{res.code}</span>
                         </div>
                         <div className="race-msg-col">
-                          {res.status === 'SUCCESS' ? '🏆 200 OK &mdash; Lock Acquired! Winner of the Race.' : `🛑 409 Conflict &mdash; ${res.message}`}
+                          {res.status === 'SUCCESS' ? '200 OK &mdash; Lock Acquired (Winner)' : `409 Conflict &mdash; ${res.message}`}
                         </div>
                       </div>
                     ))}
 
                     <div className="race-conclusion-box">
-                      <strong>🎯 Concurrency Defense Verified:</strong> Exactly 1 bot acquired the lock, and 9 collision attempts were safely rejected by Spring Boot's Optimistic Locking mechanism. Zero race conditions. Zero double bookings.
+                      <strong>Concurrency Defense Verified:</strong> Exactly 1 bot acquired the lock, and 9 collision attempts were safely rejected by Spring Boot's Optimistic Locking mechanism. Zero race conditions. Zero double bookings.
                     </div>
                   </div>
                 )}
@@ -1895,7 +1757,7 @@ function App() {
           <div className="modal-backdrop">
             <div className="payment-modal-card">
               <div className="payment-header">
-                <h3>💳 Holographic Payment Terminal</h3>
+                <h3>Checkout &amp; Payment Settlement</h3>
                 <button className="close-btn" onClick={() => setPaymentModal(prev => ({ ...prev, open: false }))}>✕</button>
               </div>
 
@@ -1925,9 +1787,11 @@ function App() {
 
               {/* Idempotency Protection Badge */}
               <div className="idempotency-badge">
-                <span>🛡️</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
                 <span>
-                  <strong>Idempotency Key Guaranteed:</strong> <span className="idempotency-key-code">{paymentModal.idempotencyKey.slice(0, 22)}...</span>
+                  <strong>Idempotency Protected:</strong> <span className="idempotency-key-code">{paymentModal.idempotencyKey.slice(0, 22)}...</span>
                 </span>
               </div>
 
@@ -1938,24 +1802,24 @@ function App() {
                   className={`pm-tab ${paymentModal.method === 'CREDIT_CARD' ? 'active' : ''}`}
                   onClick={() => setPaymentModal(prev => ({ ...prev, method: 'CREDIT_CARD' }))}
                 >
-                  <span>💳 Card</span>
-                  <small>Visa / MC</small>
+                  <span>Credit / Debit Card</span>
+                  <small>Visa &bull; Mastercard</small>
                 </button>
                 <button
                   type="button"
                   className={`pm-tab ${paymentModal.method === 'UPI' ? 'active' : ''}`}
                   onClick={() => setPaymentModal(prev => ({ ...prev, method: 'UPI' }))}
                 >
-                  <span>📱 UPI QR</span>
-                  <small>Instant Bank</small>
+                  <span>Instant UPI</span>
+                  <small>Dynamic QR &bull; VPA</small>
                 </button>
                 <button
                   type="button"
                   className={`pm-tab ${paymentModal.method === 'APPLE_PAY' ? 'active' : ''}`}
                   onClick={() => setPaymentModal(prev => ({ ...prev, method: 'APPLE_PAY' }))}
                 >
-                  <span>🍏 1-Click</span>
-                  <small>Apple Pay</small>
+                  <span>Apple Pay</span>
+                  <small>Biometric One-Touch</small>
                 </button>
               </div>
 
@@ -2038,7 +1902,9 @@ function App() {
 
               {paymentModal.method === 'APPLE_PAY' && (
                 <div style={{ textAlign: 'center', padding: '24px 12px' }}>
-                  <div style={{ fontSize: '42px', marginBottom: '8px' }}></div>
+                  <svg width="38" height="38" viewBox="0 0 170 170" fill="currentColor" style={{ marginBottom: '8px', opacity: 0.9 }}>
+                    <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.69-3.04-7.67-7.85-11.96-14.42-6-9.16-10.82-19.8-14.46-31.91-3.64-12.11-5.46-23.73-5.46-34.86 0-14.73 3.65-27.05 10.95-36.96 7.3-9.91 16.5-15.02 27.6-15.34 5.38 0 11.16 1.43 17.35 4.3 6.19 2.87 10.23 4.35 12.12 4.44 1.63 0 5.87-1.57 12.72-4.71 6.85-3.14 12.83-4.51 17.94-4.11 13.9.78 24.9 5.86 33.02 15.24-12.15 7.35-18.06 17.5-17.74 30.45.31 10.37 4.29 19.11 11.93 26.23 7.64 7.12 16.92 11.33 27.84 12.63-2.33 7.08-5.28 14.52-8.85 22.34zM119.22 33.15c0-7.39 2.65-14.43 7.95-21.12 5.3-6.69 11.98-11.16 20.04-13.41.22 1.3.33 2.5.33 3.6 0 7.39-2.81 14.71-8.43 21.96-5.62 7.25-12.44 11.75-20.46 13.5-.22-1.3-.33-2.5-.33-3.6z"/>
+                  </svg>
                   <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
                     Touch ID / Face ID Biometric Verification ready for <strong>{currentUser?.fullName}</strong>.
                   </p>
@@ -2096,7 +1962,7 @@ function App() {
           <div className="modal-backdrop">
             <div className="queue-modal-card">
               <div className="modal-header">
-                <h3>🎟️ 100,000-User Virtual Waiting Room Surge Sim</h3>
+                <h3>100,000-User Virtual Waiting Room Simulation</h3>
                 <button className="close-btn" onClick={() => setQueueModal(prev => ({ ...prev, open: false }))}>✕</button>
               </div>
 
@@ -2132,7 +1998,7 @@ function App() {
                 {queueModal.results && (
                   <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '12px', padding: '14px', margin: '14px 0' }}>
                     <div style={{ color: '#34d399', fontWeight: 700, marginBottom: '6px' }}>
-                      ✅ Stress Test Verified in {queueModal.duration}ms:
+                      Stress Test Verified in {queueModal.duration}ms:
                     </div>
                     <ul style={{ fontSize: '12px', color: 'var(--text-main)', paddingLeft: '18px', lineHeight: '1.6' }}>
                       <li><strong>Architecture Pattern:</strong> Virtual Waiting Room (Redis Ingress Token Bucket)</li>
@@ -2156,7 +2022,7 @@ function App() {
                         <span>Simulating 100k Fan Surge...</span>
                       </>
                     ) : (
-                      <span>🚀 Launch 100,000-Fan Surge Benchmark</span>
+                      <span>Run 100,000-Fan Surge Benchmark</span>
                     )}
                   </button>
                   <button
@@ -2203,8 +2069,14 @@ function App() {
       >
         <span className="seat-cushion"></span>
         <span className="seat-label">{seat.seatNumber}</span>
-        {isOtherHold && <span className="seat-lock-badge">🔒</span>}
-        {isYourHold && <span className="seat-user-badge">★</span>}
+        {isOtherHold && (
+          <span className="seat-lock-badge" title="Seat held under lock">
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+            </svg>
+          </span>
+        )}
+        {isYourHold && <span className="seat-user-badge">✓</span>}
       </button>
     );
   }
