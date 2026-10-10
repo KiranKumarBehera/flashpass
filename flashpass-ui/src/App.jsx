@@ -23,19 +23,35 @@ const getWsBrokerUrl = () => {
 
 const WS_BROKER_URL = getWsBrokerUrl();
 
+// Cryptographic JWT Bearer Token Request Interceptor
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('flashpass_jwt_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => Promise.reject(error));
+
+// Global Response Interceptor for 401 Session Invalidation
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('flashpass_jwt_token');
+    }
+    return Promise.reject(error);
+  }
+);
+
 function App() {
   // Navigation View State: 'arena' | 'tours' | 'tickets' | 'organizer'
   const [activeTab, setActiveTab] = useState('arena');
 
-  // Authentication & RBAC State
+  // Authentication & RBAC State (Secured by JWT Tokens)
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('flashpass_auth_user');
-    return saved ? JSON.parse(saved) : {
-      username: 'kiran',
-      fullName: 'Kiran Kumar Behera',
-      role: 'ROLE_FAN',
-      email: 'kiran@flashpass.io'
-    };
+    const token = localStorage.getItem('flashpass_jwt_token');
+    return (saved && token) ? JSON.parse(saved) : null;
   });
   const [authModal, setAuthModal] = useState({ open: false, mode: 'login' });
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -192,7 +208,7 @@ function App() {
 
               // If current user booked/released a ticket, refresh passbook
               if (currentUserRef.current?.username) {
-                loadMyTickets(currentUserRef.current.username);
+                loadMyTickets();
               }
             } catch (err) {
               console.error('Failed to parse seat STOMP message', err);
@@ -291,6 +307,41 @@ function App() {
   const bootstrapData = async () => {
     try {
       setLoading(true);
+
+      // Verify and restore authenticated session via cryptographically verified JWT
+      let authenticatedUser = null;
+      const storedToken = localStorage.getItem('flashpass_jwt_token');
+      if (storedToken) {
+        try {
+          const meRes = await axios.get(`${API_BASE_URL}/auth/me`);
+          authenticatedUser = meRes.data;
+          setCurrentUser(authenticatedUser);
+          localStorage.setItem('flashpass_auth_user', JSON.stringify(authenticatedUser));
+          addTelemetryLog('AUTH', `Session verified via JWT: ${authenticatedUser.username} [${authenticatedUser.role}]`);
+        } catch (authErr) {
+          localStorage.removeItem('flashpass_jwt_token');
+          localStorage.removeItem('flashpass_auth_user');
+          setCurrentUser(null);
+        }
+      }
+
+      // If no session exists and user didn't explicitly sign out, auto-authenticate demo persona 'kiran'
+      const explicitlyLoggedOut = localStorage.getItem('flashpass_logged_out') === 'true';
+      if (!authenticatedUser && !storedToken && !explicitlyLoggedOut) {
+        try {
+          const autoRes = await axios.post(`${API_BASE_URL}/auth/login`, { username: 'kiran', password: 'pass123' });
+          authenticatedUser = autoRes.data;
+          if (authenticatedUser.token) {
+            localStorage.setItem('flashpass_jwt_token', authenticatedUser.token);
+          }
+          localStorage.setItem('flashpass_auth_user', JSON.stringify(authenticatedUser));
+          setCurrentUser(authenticatedUser);
+          addTelemetryLog('AUTH', 'Initialized demo persona with signed JWT token for kiran');
+        } catch (e) {
+          console.warn('Auto-login initialization fallback', e);
+        }
+      }
+
       const [eventsRes, venuesRes] = await Promise.all([
         axios.get(`${API_BASE_URL}/events`),
         axios.get(`${API_BASE_URL}/venues`).catch(() => ({ data: [] }))
@@ -305,8 +356,8 @@ function App() {
         await loadSeats(initial.id);
       }
 
-      if (currentUser?.username) {
-        loadMyTickets(currentUser.username);
+      if (authenticatedUser?.username) {
+        loadMyTickets();
       }
 
       addTelemetryLog('REDIS', 'Fetched initial tour catalog & cache status');
@@ -344,9 +395,10 @@ function App() {
     }
   };
 
-  const loadMyTickets = async (username) => {
+  // Secure: Tickets derived server-side from cryptographically verified JWT subject
+  const loadMyTickets = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/tickets/my-tickets?user=${encodeURIComponent(username)}`);
+      const res = await axios.get(`${API_BASE_URL}/tickets/my-tickets`);
       setMyTickets(res.data);
     } catch (err) {}
   };
@@ -365,29 +417,43 @@ function App() {
     setTimeout(() => setStatusMessage({ text: '', type: '' }), 4500);
   };
 
-  // --- Auth & RBAC Handlers ---
-  const handleQuickLogin = (uname, role, fname) => {
-    const userObj = { username: uname, role: role, fullName: fname, email: `${uname}@flashpass.io` };
-    setCurrentUser(userObj);
-    localStorage.setItem('flashpass_auth_user', JSON.stringify(userObj));
-    setAuthModal({ open: false, mode: 'login' });
-    playSound('book');
-    showMessage(`Logged in as ${fname} (${role === 'ROLE_ORGANIZER' ? 'Organizer' : 'Fan'})!`, 'success');
-    addTelemetryLog('AUTH', `Switched identity to ${uname} [${role}]`);
-    loadMyTickets(uname);
+  // --- Auth & RBAC Handlers with Real Signed JWT Tokens ---
+  const handleQuickLogin = async (uname, role, fname) => {
+    try {
+      localStorage.removeItem('flashpass_logged_out');
+      const pass = uname === 'organizer' ? 'admin123' : 'pass123';
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, { username: uname, password: pass });
+      const user = res.data;
+      if (user.token) {
+        localStorage.setItem('flashpass_jwt_token', user.token);
+      }
+      localStorage.setItem('flashpass_auth_user', JSON.stringify(user));
+      setCurrentUser(user);
+      setAuthModal({ open: false, mode: 'login' });
+      playSound('book');
+      showMessage(`Logged in as ${user.fullName} (${user.role === 'ROLE_ORGANIZER' ? 'Organizer' : 'Fan'})!`, 'success');
+      addTelemetryLog('AUTH', `Switched identity to ${user.username} [${user.role}] with verified JWT`);
+      loadMyTickets();
+    } catch (err) {
+      showMessage(err.response?.data?.message || 'Quick login failed', 'error');
+    }
   };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     try {
+      localStorage.removeItem('flashpass_logged_out');
       const res = await axios.post(`${API_BASE_URL}/auth/login`, loginForm);
+      if (res.data.token) {
+        localStorage.setItem('flashpass_jwt_token', res.data.token);
+      }
       setCurrentUser(res.data);
       localStorage.setItem('flashpass_auth_user', JSON.stringify(res.data));
       setAuthModal({ open: false, mode: 'login' });
       playSound('book');
       showMessage(`Welcome back, ${res.data.fullName}!`, 'success');
-      addTelemetryLog('AUTH', `User ${res.data.username} logged in successfully`);
-      loadMyTickets(res.data.username);
+      addTelemetryLog('AUTH', `User ${res.data.username} logged in successfully [JWT Verified]`);
+      loadMyTickets();
     } catch (err) {
       showMessage(err.response?.data?.message || 'Login failed', 'error');
     }
@@ -396,14 +462,18 @@ function App() {
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     try {
+      localStorage.removeItem('flashpass_logged_out');
       const res = await axios.post(`${API_BASE_URL}/auth/register`, registerForm);
+      if (res.data.token) {
+        localStorage.setItem('flashpass_jwt_token', res.data.token);
+      }
       setCurrentUser(res.data);
       localStorage.setItem('flashpass_auth_user', JSON.stringify(res.data));
       setAuthModal({ open: false, mode: 'login' });
       playSound('book');
       showMessage(`Account created! Welcome, ${res.data.fullName}!`, 'success');
-      addTelemetryLog('AUTH', `New user registered: ${res.data.username} (${res.data.role})`);
-      loadMyTickets(res.data.username);
+      addTelemetryLog('AUTH', `New user registered: ${res.data.username} (${res.data.role}) [JWT Issued]`);
+      loadMyTickets();
     } catch (err) {
       showMessage(err.response?.data?.message || 'Registration failed', 'error');
     }
@@ -412,8 +482,11 @@ function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('flashpass_auth_user');
+    localStorage.removeItem('flashpass_jwt_token');
+    localStorage.setItem('flashpass_logged_out', 'true');
+    setMyTickets([]);
     showMessage('Logged out successfully.', 'info');
-    addTelemetryLog('AUTH', 'User signed out');
+    addTelemetryLog('AUTH', 'User signed out. Cryptographic JWT cleared.');
   };
 
   // --- Booking Lifecycle Handlers ---
@@ -444,7 +517,7 @@ function App() {
 
     try {
       const start = performance.now();
-      const res = await axios.post(`${API_BASE_URL}/seats/${seat.id}/lock?user=${encodeURIComponent(currentUser.username)}`);
+      const res = await axios.post(`${API_BASE_URL}/seats/${seat.id}/lock`);
       const updatedSeat = res.data;
       const elapsed = Math.round(performance.now() - start);
 
@@ -464,7 +537,7 @@ function App() {
     if (!selectedSeat || !currentUser) return;
     try {
       const start = performance.now();
-      const res = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/book?user=${encodeURIComponent(currentUser.username)}`);
+      const res = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/book`);
       const booked = res.data;
       const elapsed = Math.round(performance.now() - start);
 
@@ -474,7 +547,7 @@ function App() {
       playSound('book');
       showMessage(`Seat ${booked.seatNumber} officially booked and confirmed.`, 'success');
       addTelemetryLog('TRANSACTION', `Payment settled & Seat ${booked.seatNumber} committed in ${elapsed}ms (v${booked.version})`);
-      loadMyTickets(currentUser.username);
+      loadMyTickets();
     } catch (err) {
       showMessage(err.response?.data?.message || 'Booking failed.', 'error');
     }
@@ -483,7 +556,7 @@ function App() {
   const handleReleaseSeat = async () => {
     if (!selectedSeat || !currentUser) return;
     try {
-      const res = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/release?user=${encodeURIComponent(currentUser.username)}`);
+      const res = await axios.post(`${API_BASE_URL}/seats/${selectedSeat.id}/release`);
       const released = res.data;
 
       setSeats(prev => prev.map(s => (s.id === released.id ? released : s)));
@@ -505,7 +578,7 @@ function App() {
     if (!window.confirm(`Reset all seats for "${activeEvent.name}" back to AVAILABLE?`)) return;
 
     try {
-      const res = await axios.post(`${API_BASE_URL}/events/${activeEvent.id}/reset?user=${encodeURIComponent(currentUser.username)}`);
+      const res = await axios.post(`${API_BASE_URL}/events/${activeEvent.id}/reset`);
       setSeats(res.data);
       setSelectedSeat(null);
       playSound('book');
@@ -521,11 +594,11 @@ function App() {
     if (!window.confirm(`Are you sure you want to cancel your pass for Seat ${ticket.seatNumber}? This seat will be returned to the public pool.`)) return;
 
     try {
-      await axios.post(`${API_BASE_URL}/seats/${ticket.id}/release?user=${encodeURIComponent(currentUser.username)}`);
+      await axios.post(`${API_BASE_URL}/seats/${ticket.id}/release`);
       playSound('click');
       showMessage(`Ticket for Seat ${ticket.seatNumber} cancelled and refunded.`, 'info');
       addTelemetryLog('JPA', `Fan ${currentUser.username} cancelled pass for Seat ${ticket.seatNumber}`);
-      loadMyTickets(currentUser.username);
+      loadMyTickets();
       if (activeEvent?.id === ticket.eventId) {
         loadSeats(ticket.eventId);
       }
@@ -538,8 +611,7 @@ function App() {
   const handleCreateVenue = async (e) => {
     e.preventDefault();
     try {
-      const u = currentUser?.username || 'organizer';
-      const res = await axios.post(`${API_BASE_URL}/venues?user=${encodeURIComponent(u)}`, newVenueForm);
+      const res = await axios.post(`${API_BASE_URL}/venues`, newVenueForm);
       setVenues(prev => [...prev, res.data]);
       setNewVenueForm({ name: '', city: '', capacity: 50000, seatingRows: 'A,B,C,D', seatsPerRow: 10 });
       playSound('book');
@@ -564,9 +636,8 @@ function App() {
         basePriceStd: parseFloat(newEventForm.basePriceStd)
       };
 
-      const u = currentUser?.username || 'organizer';
       const res = await axios.post(
-        `${API_BASE_URL}/events?rows=${encodeURIComponent(newEventForm.rows)}&seatsPerRow=${newEventForm.seatsPerRow}&user=${encodeURIComponent(u)}`,
+        `${API_BASE_URL}/events?rows=${encodeURIComponent(newEventForm.rows)}&seatsPerRow=${newEventForm.seatsPerRow}`,
         payload
       );
 
@@ -582,7 +653,7 @@ function App() {
     }
   };
 
-  // --- 10-Bot Concurrency Race Simulator ---
+  // --- 10-Thread Concurrency Race Simulator ---
   const handleRunRaceSimulation = async () => {
     const candidateSeat = seats.find(s => s.status === 'AVAILABLE');
     if (!candidateSeat) {
@@ -592,39 +663,26 @@ function App() {
 
     setRaceModal({ open: true, running: true, results: null, targetSeat: candidateSeat });
     playSound('lock');
-    addTelemetryLog('STRESS-TEST', `Starting 10-Bot Concurrency Race against Seat #${candidateSeat.id} (${candidateSeat.seatNumber})`);
+    addTelemetryLog('STRESS-TEST', `Starting 10-Thread Concurrency Race against Seat #${candidateSeat.id} (${candidateSeat.seatNumber})`);
 
-    const botNames = [
-      'FlashBot-1', 'TurboFan-2', 'SonicFan-3', 'HyperBot-4', 'RapidFan-5',
-      'QuantumBot-6', 'RocketFan-7', 'BlitzBot-8', 'ApexFan-9', 'PhantomBot-10'
-    ];
+    try {
+      const res = await axios.post(`${API_BASE_URL}/seats/${candidateSeat.id}/race-test`);
+      const { results, duration } = res.data;
 
-    const startTime = performance.now();
+      setRaceModal({
+        open: true,
+        running: false,
+        results: results,
+        duration: duration,
+        targetSeat: candidateSeat
+      });
 
-    const racePromises = botNames.map(async (botName) => {
-      try {
-        const res = await axios.post(`${API_BASE_URL}/seats/${candidateSeat.id}/lock?user=${botName}`);
-        return { bot: botName, status: 'SUCCESS', code: 200, message: 'Lock Acquired (Winner)' };
-      } catch (err) {
-        const status = err.response?.status || 500;
-        const msg = err.response?.data?.message || 'OptimisticLock Collision';
-        return { bot: botName, status: 'COLLISION_PREVENTED', code: status, message: msg };
-      }
-    });
-
-    const results = await Promise.all(racePromises);
-    const duration = Math.round(performance.now() - startTime);
-
-    setRaceModal({
-      open: true,
-      running: false,
-      results: results,
-      duration: duration,
-      targetSeat: candidateSeat
-    });
-
-    addTelemetryLog('STRESS-TEST', `Race finished in ${duration}ms: 1 Lock Acquired, 9 Conflicts caught safely`);
-    if (activeEvent) loadSeats(activeEvent.id);
+      addTelemetryLog('STRESS-TEST', `Race finished in ${duration}ms: 1 Lock Acquired, 9 Conflicts caught safely`);
+      if (activeEvent) loadSeats(activeEvent.id);
+    } catch (err) {
+      setRaceModal(prev => ({ ...prev, running: false }));
+      showMessage(err.response?.data?.message || 'Race simulation failed.', 'error');
+    }
   };
 
   // --- Holographic Payment Gateway Handlers ---
@@ -685,7 +743,7 @@ function App() {
       playSound('book');
       showMessage(`Payment settled (${res.data.transactionRef}). Pass issued.`, 'success');
       addTelemetryLog('PAYMENT', `Charged ₹${res.data.amountCharged} via ${paymentModal.method} [Txn: ${res.data.transactionRef}] in ${elapsed}ms`);
-      loadMyTickets(currentUser.username);
+      loadMyTickets();
     } catch (err) {
       const errorMsg = err.response?.data?.message || 'Payment authorization failed.';
       setPaymentModal(prev => ({ ...prev, processing: false, error: errorMsg }));
@@ -819,7 +877,7 @@ function App() {
             </button>
             <button
               className={`view-btn ${activeTab === 'tickets' ? 'active' : ''}`}
-              onClick={() => { playSound('click'); setActiveTab('tickets'); if (currentUser?.username) loadMyTickets(currentUser.username); }}
+              onClick={() => { playSound('click'); setActiveTab('tickets'); if (currentUser?.username) loadMyTickets(); }}
             >
               My Tickets {myTickets.length > 0 && <span className="tab-pill">{myTickets.length}</span>}
             </button>
@@ -873,9 +931,14 @@ function App() {
                   <span className="avatar-circle">{currentUser.username.charAt(0).toUpperCase()}</span>
                   <div className="avatar-info">
                     <span className="user-name">{currentUser.fullName || currentUser.username}</span>
-                    <span className={`user-role-badge ${currentUser.role === 'ROLE_ORGANIZER' ? 'organizer' : 'fan'}`}>
-                      {currentUser.role === 'ROLE_ORGANIZER' ? 'ORGANIZER' : 'FAN'}
-                    </span>
+                    <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                      <span className={`user-role-badge ${currentUser.role === 'ROLE_ORGANIZER' ? 'organizer' : 'fan'}`}>
+                        {currentUser.role === 'ROLE_ORGANIZER' ? 'ORGANIZER' : 'FAN'}
+                      </span>
+                      <span className="jwt-badge" title="Cryptographically signed HMAC-SHA256 JWT Token Active">
+                        JWT
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <button className="btn-logout" onClick={handleLogout} title="Sign Out">

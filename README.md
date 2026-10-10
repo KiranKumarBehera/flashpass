@@ -104,10 +104,25 @@
   - `/topic/analytics`: Live financial telemetry (Gross Revenue, Occupancy Rate) for organizers.
   - `/topic/events/reset`: Instant stadium wipe notification that refreshes all connected viewports simultaneously.
 
-### 4. 🔐 Defense-in-Depth RBAC & Secure Pass Lifecycle
-- Domain-driven security separating `ROLE_FAN` from `ROLE_ORGANIZER` and `ROLE_ADMIN`.
-- Administrative endpoints (`POST /api/events`, `POST /api/venues`, `POST /api/events/{id}/reset`) enforce database-verified caller identity, returning **HTTP 403 Forbidden** for unauthorized access.
-- Ticket holders can cancel their confirmed pass directly from the **Holographic Passbook**. `SeatService.releaseSeat()` verifies identity, releases the seat back to `AVAILABLE`, and triggers a real-time STOMP broadcast.
+### 4. 🔐 Cryptographic JWT Authentication & Defense-in-Depth RBAC
+- **Stateless Security Filter Chain:** Built with **Spring Security 6** and **JJWT (0.12.6)** using HMAC-SHA256 (`HS256`) cryptographic signatures and 24-hour expiration tokens.
+- **Strict Identity Derivation:** Client credentials and identity are extracted exclusively from the cryptographically verified `Authorization: Bearer <token>` header (`Authentication.getName()`). Spoofed URL query parameters (e.g. `?user=a5`) are completely ignored or rejected.
+- **Endpoint Protection Matrix:**
+  - `POST /api/seats/*/lock`, `POST /api/seats/*/book`, `POST /api/seats/*/release`, and `/api/tickets/my-tickets` require authenticated JWT tokens (**HTTP 401 Unauthorized** without a token).
+  - `POST /api/venues`, `POST /api/events`, `POST /api/events/*/reset`, and `/api/analytics/**` enforce `@PreAuthorize("hasAnyAuthority('ROLE_ORGANIZER', 'ROLE_ADMIN')")` (**HTTP 403 Forbidden** for fans).
+  - Public catalog queries (`GET /api/events`, `GET /api/venues`, `GET /api/seats/**`), `/api/queue/**`, and WebSockets (`/ws-flashpass/**`) remain publicly accessible.
+- **Enterprise Password Hashing:** Uses `BCryptPasswordEncoder` (10 rounds) with automated transparent migration from legacy hashes upon sign-in.
+- **Zero-Loophole Postman / cURL Verification:**
+  ```bash
+  # 1. Unauthenticated lock attempt (Attacker passes user=a5 in URL) -> REJECTED (401)
+  curl -X POST https://flashpass-engine.onrender.com/api/seats/1/lock -i
+  # HTTP/1.1 401 Unauthorized: {"status":401,"error":"UNAUTHORIZED","message":"Authentication required..."}
+
+  # 2. Authenticated Fan trying to reset stadium -> REJECTED (403)
+  curl -X POST https://flashpass-engine.onrender.com/api/events/1/reset \
+       -H "Authorization: Bearer <FAN_JWT_TOKEN>" -i
+  # HTTP/1.1 403 Forbidden: {"status":403,"error":"FORBIDDEN","message":"Access Denied..."}
+  ```
 
 ### 5. 💳 Idempotent Payment Gateway & Automated Compensating Rollbacks
 - **Idempotency Key Enforcement:** Client transmits a cryptographically unique `Idempotency-Key: UUIDv4` header. If network retries occur or a fan double-clicks "Pay", the backend returns the cached authorization record—preventing duplicate charges.

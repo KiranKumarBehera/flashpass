@@ -4,6 +4,8 @@ import com.kiran.flashpassengine.exception.SeatUnavailableException;
 import com.kiran.flashpassengine.model.User;
 import com.kiran.flashpassengine.model.UserRole;
 import com.kiran.flashpassengine.repository.UserRepository;
+import com.kiran.flashpassengine.security.JwtService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -15,12 +17,16 @@ import java.util.*;
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final JwtService jwtService;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService(UserRepository userRepository) {
+    public AuthService(UserRepository userRepository, JwtService jwtService, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.jwtService = jwtService;
+        this.passwordEncoder = passwordEncoder;
     }
 
-    public static String hashPassword(String password) {
+    public static String legacySha256(String password) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] encodedhash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
@@ -36,6 +42,10 @@ public class AuthService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 algorithm not available", e);
         }
+    }
+
+    public static String hashPassword(String password) {
+        return legacySha256(password);
     }
 
     public Map<String, Object> register(String username, String email, String password, String fullName, UserRole role) {
@@ -55,7 +65,7 @@ public class AuthService {
         User user = new User(
                 username.trim(),
                 email != null && !email.trim().isEmpty() ? email.trim() : username.trim() + "@flashpass.io",
-                hashPassword(password),
+                passwordEncoder.encode(password),
                 fullName != null ? fullName.trim() : username.trim(),
                 role != null ? role : UserRole.ROLE_FAN
         );
@@ -72,8 +82,18 @@ public class AuthService {
         User user = userRepository.findByUsername(username.trim())
                 .orElseThrow(() -> new SeatUnavailableException("Invalid username or password."));
 
-        String hashedAttempt = hashPassword(password);
-        if (!hashedAttempt.equals(user.getPasswordHash())) {
+        boolean matches = passwordEncoder.matches(password, user.getPasswordHash());
+        if (!matches) {
+            // Check legacy SHA-256 hash and migrate to BCrypt automatically
+            String sha256Attempt = legacySha256(password);
+            if (sha256Attempt.equals(user.getPasswordHash())) {
+                matches = true;
+                user.setPasswordHash(passwordEncoder.encode(password));
+                userRepository.save(user);
+            }
+        }
+
+        if (!matches) {
             throw new SeatUnavailableException("Invalid username or password.");
         }
 
@@ -95,9 +115,9 @@ public class AuthService {
         res.put("email", user.getEmail());
         res.put("fullName", user.getFullName());
         res.put("role", user.getRole().name());
-        // Simple base64 token encoding user:role:timestamp
-        String rawToken = user.getUsername() + ":" + user.getRole().name() + ":" + System.currentTimeMillis();
-        String token = Base64.getEncoder().encodeToString(rawToken.getBytes(StandardCharsets.UTF_8));
+
+        // Generate genuine cryptographically-signed JWT
+        String token = jwtService.generateToken(user);
         res.put("token", token);
         return res;
     }

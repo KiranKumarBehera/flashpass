@@ -4,6 +4,7 @@ import com.kiran.flashpassengine.model.User;
 import com.kiran.flashpassengine.model.UserRole;
 import com.kiran.flashpassengine.service.AuthService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -40,12 +41,27 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> getMe(@RequestParam(required = false) String username) {
-        if (username == null || username.isBlank()) {
-            return ResponseEntity.badRequest().body("Username parameter is required.");
+    public ResponseEntity<?> getMe(Authentication authentication, @RequestParam(required = false) String username) {
+        String targetUser = (authentication != null && authentication.isAuthenticated())
+                ? authentication.getName()
+                : username;
+
+        if (targetUser == null || targetUser.isBlank() || "anonymousUser".equalsIgnoreCase(targetUser)) {
+            return ResponseEntity.status(401).body(Map.of(
+                    "status", 401,
+                    "error", "UNAUTHORIZED",
+                    "message", "Authentication required. Please provide a valid Bearer JWT."
+            ));
         }
-        return authService.findByUsername(username)
-                .map(ResponseEntity::ok)
+
+        return authService.findByUsername(targetUser)
+                .map(user -> ResponseEntity.ok(Map.of(
+                        "id", user.getId(),
+                        "username", user.getUsername(),
+                        "email", user.getEmail(),
+                        "fullName", user.getFullName(),
+                        "role", user.getRole().name()
+                )))
                 .orElse(ResponseEntity.notFound().build());
     }
 

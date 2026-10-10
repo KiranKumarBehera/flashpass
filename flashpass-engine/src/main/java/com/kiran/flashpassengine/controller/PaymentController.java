@@ -5,6 +5,7 @@ import com.kiran.flashpassengine.model.PaymentChargeResponse;
 import com.kiran.flashpassengine.model.PaymentTransaction;
 import com.kiran.flashpassengine.service.PaymentService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,12 +22,18 @@ public class PaymentController {
     }
 
     /**
-     * 💳 Process Idempotent Ticket Payment with Automated Bank Simulation & Rollback
+     * Process Idempotent Ticket Payment with Automated Bank Simulation & Rollback
      */
     @PostMapping("/charge")
     public ResponseEntity<PaymentChargeResponse> chargePayment(
             @RequestBody PaymentChargeRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader) {
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader,
+            Authentication authentication) {
+
+        // Enforce authentic user from JWT token
+        if (authentication != null && authentication.isAuthenticated()) {
+            request.setUser(authentication.getName());
+        }
 
         if ((request.getIdempotencyKey() == null || request.getIdempotencyKey().isBlank()) 
                 && idempotencyKeyHeader != null && !idempotencyKeyHeader.isBlank()) {
@@ -42,10 +49,11 @@ public class PaymentController {
     }
 
     /**
-     * 📋 Audit Trail: Retrieve payment history for authenticated user
+     * Audit Trail: Retrieve payment history for authenticated user
      */
     @GetMapping("/history")
-    public ResponseEntity<List<PaymentTransaction>> getPaymentHistory(@RequestParam String user) {
-        return ResponseEntity.ok(paymentService.getTransactionsByUser(user));
+    public ResponseEntity<List<PaymentTransaction>> getPaymentHistory(Authentication authentication) {
+        String username = authentication != null ? authentication.getName() : "anonymous";
+        return ResponseEntity.ok(paymentService.getTransactionsByUser(username));
     }
 }
