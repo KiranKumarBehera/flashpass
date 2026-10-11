@@ -24,23 +24,27 @@ public class PaymentService {
     private final EventRepository eventRepository;
     private final SeatService seatService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final com.kiran.flashpassengine.metrics.FlashPassMetrics metrics;
 
     public PaymentService(
             PaymentTransactionRepository paymentTransactionRepository,
             SeatRepository seatRepository,
             EventRepository eventRepository,
             SeatService seatService,
-            SimpMessagingTemplate messagingTemplate) {
+            SimpMessagingTemplate messagingTemplate,
+            com.kiran.flashpassengine.metrics.FlashPassMetrics metrics) {
         this.paymentTransactionRepository = paymentTransactionRepository;
         this.seatRepository = seatRepository;
         this.eventRepository = eventRepository;
         this.seatService = seatService;
         this.messagingTemplate = messagingTemplate;
+        this.metrics = metrics;
     }
 
     @Transactional
     @CacheEvict(value = "eventSeats", allEntries = true)
     public PaymentChargeResponse processPayment(PaymentChargeRequest request) {
+        long startTime = System.nanoTime();
         if (request.getIdempotencyKey() == null || request.getIdempotencyKey().isBlank()) {
             request.setIdempotencyKey(UUID.randomUUID().toString());
         }
@@ -121,6 +125,9 @@ public class PaymentService {
             messagingTemplate.convertAndSend("/topic/seats", rolledBackSeat);
             seatService.broadcastAnalyticsUpdate();
 
+            // 📈 Record telemetry failure metric
+            metrics.recordPayment(transaction.getPaymentMethod().name(), false, System.nanoTime() - startTime);
+
             return new PaymentChargeResponse(
                     false,
                     txnRef,
@@ -143,6 +150,9 @@ public class PaymentService {
         seat.setLockedBy(null);
         seat.setLockedAt(null);
         Seat bookedSeat = seatRepository.save(seat);
+
+        // 📈 Record telemetry success metric
+        metrics.recordPayment(transaction.getPaymentMethod().name(), true, System.nanoTime() - startTime);
 
         // 📢 Real-Time WebSocket Broadcasts
         messagingTemplate.convertAndSend("/topic/seats", bookedSeat);

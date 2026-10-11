@@ -1,0 +1,77 @@
+name: FlashPass Production CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-test-and-build:
+    name: ⚡ Backend Engine (Spring Boot 3.3 / Java 17)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up JDK 17 LTS (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: 🛡️ Grant execute permission for Maven wrapper
+        run: chmod +x flashpass-engine/mvnw
+
+      - name: 🧪 Run Unit & Concurrency Stress Tests
+        run: |
+          cd flashpass-engine
+          ./mvnw test --batch-mode
+
+      - name: 📦 Build Production JAR
+        run: |
+          cd flashpass-engine
+          ./mvnw package -DskipTests --batch-mode
+
+      - name: 🐳 Validate Backend Dockerfile (Multi-Stage Build)
+        run: |
+          docker build -t flashpass-engine:ci ./flashpass-engine
+
+  frontend-test-and-build:
+    name: ⚛️ Frontend Single Page Application (React 19 + Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: 🟩 Set up Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: flashpass-ui/package-lock.json
+
+      - name: 📦 Install UI Dependencies
+        run: |
+          cd flashpass-ui
+          npm ci
+
+      - name: 🏗️ Build Production Bundle
+        run: |
+          cd flashpass-ui
+          npm run build
+
+      - name: 🐳 Validate Frontend Dockerfile (Nginx Reverse Proxy)
+        run: |
+          docker build -t flashpass-ui:ci ./flashpass-ui
+
+  docker-compose-validation:
+    name: 🚢 Multi-Container Orchestration (Docker Compose)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: 🔍 Validate docker-compose.yml Specification
+        run: docker compose config

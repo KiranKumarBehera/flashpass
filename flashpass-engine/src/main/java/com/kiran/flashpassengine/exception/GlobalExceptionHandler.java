@@ -10,6 +10,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private final com.kiran.flashpassengine.metrics.FlashPassMetrics metrics;
+
+    public GlobalExceptionHandler(com.kiran.flashpassengine.metrics.FlashPassMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     // Handles 404 Not Found
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException ex) {
@@ -57,6 +63,7 @@ public class GlobalExceptionHandler {
     // Handles Concurrency Conflicts when 2 users hit the exact same seat simultaneously
     @ExceptionHandler(org.springframework.orm.ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(org.springframework.orm.ObjectOptimisticLockingFailureException ex) {
+        metrics.recordSeatLockConflict();
         ErrorResponse error = new ErrorResponse(
                 HttpStatus.CONFLICT.value(),
                 "CONCURRENCY_CONFLICT",

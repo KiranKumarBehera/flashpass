@@ -72,6 +72,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/seats/*/race-test").permitAll()
                 .requestMatchers("/ws-flashpass/**").permitAll()
 
+                // Production Observability (Spring Boot Actuator Probes & Telemetry)
+                .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus", "/actuator/metrics/**").permitAll()
+
                 // Organizer & Admin Protected Endpoints
                 .requestMatchers(HttpMethod.POST, "/api/venues/**").hasAnyAuthority("ROLE_ORGANIZER", "ROLE_ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/events").hasAnyAuthority("ROLE_ORGANIZER", "ROLE_ADMIN")

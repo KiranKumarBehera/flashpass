@@ -22,15 +22,18 @@ public class SeatService {
     private final SeatRepository seatRepository;
     private final com.kiran.flashpassengine.repository.PaymentTransactionRepository paymentTransactionRepository;
     private final SimpMessagingTemplate messagingTemplate; // 📡 WebSocket Broadcaster
+    private final com.kiran.flashpassengine.metrics.FlashPassMetrics metrics;
 
     public SeatService(EventRepository eventRepository, 
                        SeatRepository seatRepository, 
                        com.kiran.flashpassengine.repository.PaymentTransactionRepository paymentTransactionRepository,
-                       SimpMessagingTemplate messagingTemplate) {
+                       SimpMessagingTemplate messagingTemplate,
+                       com.kiran.flashpassengine.metrics.FlashPassMetrics metrics) {
         this.eventRepository = eventRepository;
         this.seatRepository = seatRepository;
         this.paymentTransactionRepository = paymentTransactionRepository;
         this.messagingTemplate = messagingTemplate;
+        this.metrics = metrics;
     }
 
     public List<Event> getAllEvents() {
@@ -61,10 +64,14 @@ public class SeatService {
             throw new SeatUnavailableException("Seat " + seat.getSeatNumber() + " is already " + seat.getStatus() + holderInfo);
         }
 
+        long startTime = System.nanoTime();
         seat.setStatus(SeatStatus.LOCKED);
         seat.setLockedBy(user != null && !user.isBlank() ? user : "Kiran");
         seat.setLockedAt(java.time.LocalDateTime.now());
         Seat savedSeat = seatRepository.save(seat);
+
+        // 📈 Record telemetry metrics
+        metrics.recordSeatLockSuccess(System.nanoTime() - startTime);
 
         // 📢 Broadcast to all connected browsers in real-time!
         messagingTemplate.convertAndSend("/topic/seats", savedSeat);
@@ -99,6 +106,9 @@ public class SeatService {
         seat.setLockedBy(null);
         seat.setLockedAt(null);
         Seat savedSeat = seatRepository.save(seat);
+
+        // 📈 Record telemetry metrics
+        metrics.recordSeatBooked();
 
         // 📢 Broadcast confirmed booking to all connected browsers!
         messagingTemplate.convertAndSend("/topic/seats", savedSeat);
@@ -146,6 +156,9 @@ public class SeatService {
         seat.setLockedAt(null);
         seat.setBookedBy(null);
         Seat savedSeat = seatRepository.save(seat);
+
+        // 📈 Record telemetry metrics
+        metrics.recordSeatReleased();
 
         // 📢 Broadcast released seat to all connected browsers!
         messagingTemplate.convertAndSend("/topic/seats", savedSeat);
